@@ -1,6 +1,9 @@
 use crate::{
-    credential_format_profiles::{CredentialFormatCollection, CredentialFormats, WithParameters}, credential_issuer::credential_issuer_metadata::CredentialResponseEncryption, proof::KeyProofType
+    credential_format_profiles::{CredentialFormatCollection, CredentialFormats, WithParameters},
+    credential_issuer::credential_issuer_metadata::CredentialResponseEncryption,
+    proof::KeyProofType,
 };
+use jsonwebtoken::jwk::Jwk;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
@@ -15,11 +18,26 @@ where
     pub credential_format: CFC,
     pub proof: Option<KeyProofType>,
     // TODO: add `credential_identifier` field when support for Authorization Code Flow is added.
-    // pub credential_response_encryption : Option<CredentialResponseEncryptionKey>
+    pub credential_response_encryption: Option<CredentialResponseEncryptionSpecification>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+pub struct CredentialResponseEncryptionSpecification {
+    pub jwk: CredentialResponseEncryptionKey,
+    pub enc: String,
+    pub alg: String,
 }
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[serde(untagged)]
 pub enum CredentialResponseEncryptionKey {
-
+    Rsa {
+        alg: String,
+        n: String,
+        e: String,
+        kid: String,
+        r#use: String,
+        kty: String,
+    },
 }
 
 /// Batch Credential Request as described here: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-13.html#name-batch-credential-request
@@ -84,7 +102,7 @@ mod tests {
                 credential_format: CredentialFormats::JwtVcJson(Parameters {
                     parameters: (
                         CredentialDefinition {
-                            type_:  StringOrVec::Many(vec![
+                            type_: StringOrVec::Many(vec![
                                 "VerifiableCredential".to_string(),
                                 "UniversityDegreeCredential".to_string()
                             ]),
@@ -102,7 +120,8 @@ mod tests {
                 }),
                 proof: Some(KeyProofType::Jwt {
                     jwt: "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM".to_string()
-                })
+                }),
+                credential_response_encryption: None
             },
         );
 
@@ -159,7 +178,8 @@ mod tests {
                 }),
                 proof: Some(KeyProofType::Jwt {
                     jwt: "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM".to_string()
-                })
+                }),
+                credential_response_encryption: None
             },
         );
 
@@ -193,7 +213,8 @@ mod tests {
                 }),
                 proof: Some(KeyProofType::Jwt {
                     jwt: "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM".to_string()
-                })
+                }),
+                credential_response_encryption: None
             },
             json_example::<CredentialRequest>("tests/examples/credential_request_iso_mdl_with_claims.json")
         );
@@ -225,7 +246,8 @@ mod tests {
                 }),
                 proof: Some(KeyProofType::Jwt {
                     jwt: "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM".to_string()
-                })
+                }),
+                credential_response_encryption: None
             },
             json_example::<CredentialRequest>("tests/examples/credential_request_jwt_vc_json-ld.json")
         );
@@ -253,7 +275,8 @@ mod tests {
                 }),
                 proof: Some(KeyProofType::Jwt {
                     jwt: "eyJraWQiOiJkaWQ6ZXhhbXBsZTplYmZlYjFmNzEyZWJjNmYxYzI3NmUxMmVjMjEva2V5cy8xIiwiYWxnIjoiRVMyNTYiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJzNkJoZFJrcXQzIiwiYXVkIjoiaHR0cHM6Ly9zZXJ2ZXIuZXhhbXBsZS5jb20iLCJpYXQiOiIyMDE4LTA5LTE0VDIxOjE5OjEwWiIsIm5vbmNlIjoidFppZ25zbkZicCJ9.ewdkIkPV50iOeBUqMXCC_aZKPxgihac0aW9EkL1nOzM".to_string()
-                })
+                }),
+                credential_response_encryption: None
             },
             json_example::<CredentialRequest>(
                 "tests/examples/credential_request_jwt_vc_json_with_claims.json"
@@ -287,7 +310,8 @@ mod tests {
                 }),
                 proof: Some(KeyProofType::Jwt {
                     jwt: "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM".to_string()
-                })
+                }),
+                credential_response_encryption: None
             },
             json_example::<CredentialRequest>("tests/examples/credential_request_ldp_vc.json")
         );

@@ -6,19 +6,30 @@ use crate::credential_issuer::{
     authorization_server_metadata::AuthorizationServerMetadata, credential_issuer_metadata::CredentialIssuerMetadata,
 };
 use crate::credential_offer::{AuthorizationRequestReference, CredentialOfferParameters};
-use crate::credential_request::{BatchCredentialRequest, CredentialRequest};
+use crate::credential_request::{
+    BatchCredentialRequest, CredentialRequest, CredentialResponseEncryptionKey,
+    CredentialResponseEncryptionSpecification,
+};
 use crate::credential_response::{BatchCredentialResponse, CredentialResponseType};
 use crate::proof::{KeyProofType, ProofType};
 use crate::{credential_response::CredentialResponse, token_request::TokenRequest, token_response::TokenResponse};
 use anyhow::{bail, Result};
+use base64::Engine;
+use jsonwebtoken::jwk::{CommonParameters, Jwk, RSAKeyParameters};
+use libaes::Cipher;
 use oid4vc_core::authentication::subject::SigningSubject;
+use oid4vc_core::jwt::{base64_url_decode, base64_url_encode};
 use oid4vc_core::SubjectSyntaxType;
 use reqwest::Url;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::policies::ExponentialBackoff;
 use reqwest_retry::RetryTransientMiddleware;
+use rsa::rand_core::OsRng;
+use rsa::traits::PublicKeyParts;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
+use sha1::Sha1;
+use sha2::Sha256;
 
 pub struct Wallet<CFC = CredentialFormats<WithParameters>>
 where
@@ -197,12 +208,34 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .map_err(|e| e.into())
     }
 
+    //TODO: make encryption/decryption abstract and ooptional
     pub async fn get_credential(
         &self,
         credential_issuer_metadata: CredentialIssuerMetadata<CFC>,
         token_response: &TokenResponse,
         credential_format: CFC,
     ) -> Result<CredentialResponse> {
+        let privatekey = rsa::RsaPrivateKey::new(&mut OsRng, 2048).unwrap();
+        let pub_key = privatekey.to_public_key();
+        let exponent = pub_key.e().to_bytes_be();
+        let e = base64_encode_bytes(&exponent);
+        let n = pub_key.n().to_bytes_be();
+        let n = base64_encode_bytes(&n);
+        println!("{:?}", pub_key);
+        let jwk = CredentialResponseEncryptionKey::Rsa {
+            alg: "RSA-OAEP-256".to_string(),
+            n,
+            e,
+            kid: "rsa-key".to_string(),
+            r#use: "enc".to_string(),
+            kty: "RSA".to_string(),
+        };
+        let encryption_spec = CredentialResponseEncryptionSpecification {
+            jwk,
+            enc: "A128CBC-HS256".to_string(),
+            alg: "RSA-OAEP-256".to_string(),
+        };
+
         let retry_with_proof = token_response.c_nonce.is_none();
         let proof = if token_response.c_nonce.is_some() {
             Some(
@@ -235,6 +268,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         let credential_request = CredentialRequest {
             credential_format: credential_format.clone(),
             proof,
+            credential_response_encryption: Some(encryption_spec.clone()),
         };
 
         if retry_with_proof {
@@ -277,16 +311,39 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             let credential_request = CredentialRequest {
                 credential_format: credential_format.clone(),
                 proof,
+                credential_response_encryption: Some(encryption_spec.clone()),
             };
-            self.client
+            let Ok(encrypted_payload) = self
+                .client
                 .post(credential_issuer_metadata.credential_endpoint.clone())
                 .bearer_auth(token_response.access_token.clone())
                 .json(&credential_request)
                 .send()
                 .await?
-                .json()
+                .text()
                 .await
-                .map_err(|e| e.into())
+            else {
+                bail!("failure retrieveing stuff");
+            };
+            //c.f. https://datatracker.ietf.org/doc/html/rfc7516#appendix-A.2.7
+            let split_parts = encrypted_payload.split('.').collect::<Vec<_>>();
+            let [_header, encrypted_key, iv, payload, ..] = split_parts.as_slice() else {
+                bail!("too less arguments");
+            };
+            let oaep = rsa::Oaep::new_with_mgf_hash::<Sha256, Sha256>();
+            println!("{encrypted_key}");
+            let decrypted_key = privatekey
+                .decrypt(oaep, &base64_url_decode(&encrypted_key.as_bytes()).unwrap())
+                .unwrap();
+            let mut key = [0; 16];
+            // first 16 bytes are for hmac second 16 bytes are for aes128CBC
+            key.copy_from_slice(&decrypted_key[16..]);
+            let cipher = Cipher::new_128(&key);
+            let iv = base64_url_decode(iv).unwrap();
+            let data = base64_url_decode(payload).unwrap();
+            let result = cipher.cbc_decrypt(&iv, &data);
+            println!("The text: ---> {}", String::from_utf8_lossy(&result));
+            serde_json::from_slice(&result).map_err(|e| e.into())
         } else {
             self.client
                 .post(credential_issuer_metadata.credential_endpoint.clone())
@@ -306,6 +363,22 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         token_response: &TokenResponse,
         credential_formats: Vec<CFC>,
     ) -> Result<BatchCredentialResponse> {
+        let privatekey = rsa::RsaPrivateKey::new(&mut OsRng, 2028).unwrap();
+        let pub_key = serde_json::to_value(privatekey.to_public_key()).unwrap();
+
+        let jwk = CredentialResponseEncryptionKey::Rsa {
+            alg: "RSA-OAEP-256".to_string(),
+            n: pub_key.get("n").unwrap().as_str().unwrap().to_string(),
+            e: pub_key.get("e").unwrap().as_str().unwrap().to_string(),
+            kid: "rsa-key".to_string(),
+            r#use: "enc".to_string(),
+            kty: "RSA".to_string(),
+        };
+        let encryption_spec = CredentialResponseEncryptionSpecification {
+            jwk,
+            enc: "A128CBC-HS256".to_string(),
+            alg: "RSA-OAEP-256".to_string(),
+        };
         let proof = Some(
             KeyProofType::builder()
                 .proof_type(ProofType::Jwt)
@@ -337,6 +410,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                 .map(|credential_format| CredentialRequest {
                     credential_format: credential_format.to_owned(),
                     proof: proof.clone(),
+                    credential_response_encryption: Some(encryption_spec.clone()),
                 })
                 .collect(),
         };
@@ -350,5 +424,36 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .json()
             .await
             .map_err(|e| e.into())
+    }
+}
+
+pub fn base64_encode_bytes<T: AsRef<[u8]>>(bytes: &T) -> String {
+    base64::prelude::BASE64_URL_SAFE_NO_PAD.encode(bytes.as_ref())
+}
+pub fn base64_decode_bytes<T: AsRef<[u8]>>(bytes: &T) -> Result<Vec<u8>> {
+   let Ok(result) = base64::prelude::BASE64_URL_SAFE_NO_PAD.decode(bytes.as_ref()) else {
+    bail!("Could not decode");
+   };
+   Ok(result)
+}
+#[cfg(test)]
+mod tests {
+    use oid4vc_core::jwt::base64_url_encode;
+    use rsa::{rand_core::OsRng, traits::PublicKeyParts};
+
+    use crate::wallet::base64_encode_bytes;
+
+    #[test]
+    fn test_rsa_mod() {
+        let privatekey = rsa::RsaPrivateKey::new(&mut OsRng, 2048).unwrap();
+        let pub_key = privatekey.to_public_key();
+        let exponent = pub_key.e().to_bytes_be();
+
+        let e = base64_encode_bytes(&exponent);
+        let n = pub_key.n().to_bytes_be();
+        let n = base64_encode_bytes(&n);
+        println!("{:?}", exponent);
+        println!("{}", pub_key.e().to_string());
+        println!("{}", e);
     }
 }

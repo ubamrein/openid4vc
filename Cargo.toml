@@ -40,7 +40,11 @@ serde_urlencoded = "0.7"
 serde_with = "3.0"
 tokio = { version = "1.26.0", features = ["rt", "macros", "rt-multi-thread"] }
 url = { version = "2", features = ["serde"] }
-
+rsa = { version = "0.9.6", features = ["serde"] }
+sha2 = "0.10.8"
+libaes = "0.7.0"
+sha1 = "0.10.6"
+base64 = "0.22.1"
 # TODO: Fix these dependencies once publishing to crates.io is automated.
 [dependencies]
 oid4vc-core = { path = "oid4vc-core" }
@@ -49,3 +53,8 @@ oid4vp = { path = "oid4vp" }
 siopv2 = { path = "siopv2" }
 oid4vc-manager = { path = "oid4vc-manager" }
 dif-presentation-exchange = { path = "dif-presentation-exchange" }
+
+
+
+
+

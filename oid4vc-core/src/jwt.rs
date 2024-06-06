@@ -73,11 +73,18 @@ where
     Ok(message)
 }
 
-fn base64_url_encode<T>(value: &T) -> Result<String>
+pub fn base64_url_encode<T>(value: &T) -> Result<String>
 where
     T: ?Sized + Serialize,
 {
     Ok(base64_url::encode(serde_json::to_vec(value)?.as_slice()))
+}
+
+pub fn base64_url_decode<T>(value: &T) -> Result<Vec<u8>>
+where
+    T: AsRef<[u8]>,
+{
+    Ok(base64_url::decode(value)?)
 }
 
 #[cfg(feature = "test-utils")]
