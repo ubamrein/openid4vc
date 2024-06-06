@@ -7,10 +7,10 @@ use crate::credential_issuer::{
 };
 use crate::credential_offer::{AuthorizationRequestReference, CredentialOfferParameters};
 use crate::credential_request::{BatchCredentialRequest, CredentialRequest};
-use crate::credential_response::BatchCredentialResponse;
+use crate::credential_response::{BatchCredentialResponse, CredentialResponseType};
 use crate::proof::{KeyProofType, ProofType};
 use crate::{credential_response::CredentialResponse, token_request::TokenRequest, token_response::TokenResponse};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use oid4vc_core::authentication::subject::SigningSubject;
 use oid4vc_core::SubjectSyntaxType;
 use reqwest::Url;
@@ -18,6 +18,7 @@ use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::policies::ExponentialBackoff;
 use reqwest_retry::RetryTransientMiddleware;
 use serde::de::DeserializeOwned;
+use serde_json::{Map, Value};
 
 pub struct Wallet<CFC = CredentialFormats<WithParameters>>
 where
@@ -166,6 +167,32 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .send()
             .await?
             .json()
+            .await
+            .map_err(|e| e.into())
+    }
+
+    pub async fn try_get_deferred_credential(
+        &self,
+        credential_issuer_metadata: CredentialIssuerMetadata<CFC>,
+        token_response: &TokenResponse,
+        credential_response: CredentialResponse,
+    ) -> Result<CredentialResponse> {
+        let CredentialResponseType::Deferred { transaction_id } = credential_response.credential else {
+            bail!("not a deferred credential");
+        };
+        let Some(deferred_endpoint) = credential_issuer_metadata.deferred_credential_endpoint.as_ref() else {
+            bail!("deferred credentials not  supported by remote");
+        };
+        let mut map = Map::new();
+        map.insert("transaction_id".to_string(), Value::String(transaction_id));
+        let transaction_id: Value = Value::Object(map);
+        self.client
+            .post(deferred_endpoint.to_owned())
+            .bearer_auth(token_response.access_token.clone())
+            .json(&transaction_id)
+            .send()
+            .await?
+            .json::<CredentialResponse>()
             .await
             .map_err(|e| e.into())
     }

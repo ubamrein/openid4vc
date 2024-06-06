@@ -1,6 +1,5 @@
 use crate::{
-    credential_format_profiles::{CredentialFormatCollection, CredentialFormats, WithParameters},
-    proof::KeyProofType,
+    credential_format_profiles::{CredentialFormatCollection, CredentialFormats, WithParameters}, credential_issuer::credential_issuer_metadata::CredentialResponseEncryption, proof::KeyProofType
 };
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
@@ -16,7 +15,11 @@ where
     pub credential_format: CFC,
     pub proof: Option<KeyProofType>,
     // TODO: add `credential_identifier` field when support for Authorization Code Flow is added.
-    // TODO: add `credential_response_encryption` field when support for JWE is added.
+    // pub credential_response_encryption : Option<CredentialResponseEncryptionKey>
+}
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+pub enum CredentialResponseEncryptionKey {
+
 }
 
 /// Batch Credential Request as described here: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-13.html#name-batch-credential-request
