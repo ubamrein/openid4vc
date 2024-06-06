@@ -49,6 +49,13 @@ pub struct CredentialOfferParameters {
     pub grants: Option<Grants>,
 }
 
+#[skip_serializing_none]
+#[derive(Deserialize, Serialize, Debug, Eq, PartialEq, Clone)]
+pub struct AuthorizationRequestReference {
+    pub request_uri: String,
+    pub expires_in: u32
+}
+
 /// Credential Offer as described in https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-13.html#name-credential-offer
 #[derive(Deserialize, Serialize, Debug, Eq, PartialEq, Clone)]
 #[serde(rename_all = "snake_case")]

@@ -45,7 +45,7 @@ mod tests {
     use super::*;
     use crate::{
         credential_format_profiles::{
-            w3c_verifiable_credentials::{jwt_vc_json, CredentialSubject},
+            w3c_verifiable_credentials::{jwt_vc_json::{self, StringOrVec}, CredentialSubject},
             CredentialFormats, Parameters, WithParameters,
         },
         proof::KeyProofMetadata,
@@ -108,10 +108,10 @@ mod tests {
                         credential_format: CredentialFormats::<WithParameters>::JwtVcJson(Parameters {
                             parameters: (
                                 jwt_vc_json::CredentialDefinition {
-                                    type_: vec![
+                                    type_: StringOrVec::Many(vec![
                                         "VerifiableCredential".to_string(),
                                         "UniversityDegreeCredential".to_string()
-                                    ],
+                                    ]),
                                     credential_subject: CredentialSubject {
                                         credential_subject: Some(json!({
                                             "given_name": {

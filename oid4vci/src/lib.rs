@@ -15,3 +15,4 @@ pub mod wallet;
 pub use credential::{VerifiableCredentialJwt, VerifiableCredentialJwtBuilder};
 pub use proof::{KeyProofType, ProofType};
 pub use wallet::Wallet;
+pub use jsonwebtoken;

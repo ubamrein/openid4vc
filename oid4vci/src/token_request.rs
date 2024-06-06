@@ -11,6 +11,7 @@ pub enum TokenRequest {
         code: String,
         code_verifier: Option<String>,
         redirect_uri: Option<String>,
+        client_id: Option<String>
     },
     #[serde(rename = "urn:ietf:params:oauth:grant-type:pre-authorized_code")]
     PreAuthorizedCode {
@@ -38,6 +39,7 @@ mod tests {
                 code: "SplxlOBeZQQYbYS6WxSbIA".to_string(),
                 code_verifier: Some("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk".to_string()),
                 redirect_uri: Some("https://Wallet.example.org/cb".to_string()),
+                client_id: None
             }
         );
 

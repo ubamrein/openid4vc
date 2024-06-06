@@ -1,11 +1,11 @@
 use crate::authorization_details::AuthorizationDetailsObject;
-use crate::authorization_request::AuthorizationRequest;
+use crate::authorization_request::{AuthorizationRequest, PushedAuthorizationRequest};
 use crate::authorization_response::AuthorizationResponse;
 use crate::credential_format_profiles::{CredentialFormatCollection, CredentialFormats, WithParameters};
 use crate::credential_issuer::{
     authorization_server_metadata::AuthorizationServerMetadata, credential_issuer_metadata::CredentialIssuerMetadata,
 };
-use crate::credential_offer::CredentialOfferParameters;
+use crate::credential_offer::{AuthorizationRequestReference, CredentialOfferParameters};
 use crate::credential_request::{BatchCredentialRequest, CredentialRequest};
 use crate::credential_response::BatchCredentialResponse;
 use crate::proof::{KeyProofType, ProofType};
@@ -48,6 +48,21 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         })
     }
 
+    pub async fn push_authorization_request(
+        &self,
+        par_endpoint: Url,
+        auth_request: PushedAuthorizationRequest,
+    ) -> Result<AuthorizationRequestReference> {
+        self.client
+            .post(par_endpoint)
+            .form(&auth_request)
+            .send()
+            .await?
+            .json()
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))
+    }
+
     pub async fn get_credential_offer(&self, credential_offer_uri: Url) -> Result<CredentialOfferParameters> {
         self.client
             .get(credential_offer_uri)
@@ -63,7 +78,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         credential_issuer_url: Url,
     ) -> Result<AuthorizationServerMetadata> {
         let mut oauth_authorization_server_endpoint = credential_issuer_url.clone();
-
+        let mut oidc_authorization_server_endpoint = credential_issuer_url.clone();
         // TODO(NGDIL): remove this NGDIL specific code. This is a temporary fix to get the authorization server metadata.
         oauth_authorization_server_endpoint
             .path_segments_mut()
@@ -71,14 +86,27 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .unwrap()
             .push(".well-known")
             .push("oauth-authorization-server");
+        oidc_authorization_server_endpoint
+            .path_segments_mut()
+            .map_err(|_| anyhow::anyhow!("unable to parse credential issuer url"))
+            .unwrap()
+            .push(".well-known")
+            .push("openid-configuration");
 
-        self.client
-            .get(oauth_authorization_server_endpoint)
-            .send()
-            .await?
-            .json::<AuthorizationServerMetadata>()
-            .await
-            .map_err(|_| anyhow::anyhow!("Failed to get authorization server metadata"))
+        if let Ok(result) = self.client.get(oidc_authorization_server_endpoint).send().await {
+            result
+                .json::<AuthorizationServerMetadata>()
+                .await
+                .map_err(|_| anyhow::anyhow!("Failed to get authorization server metadata [oidc]"))
+        } else {
+            self.client
+                .get(oauth_authorization_server_endpoint)
+                .send()
+                .await?
+                .json::<AuthorizationServerMetadata>()
+                .await
+                .map_err(|_| anyhow::anyhow!("Failed to get authorization server metadata [oauth]"))
+        }
     }
 
     pub async fn get_credential_issuer_metadata(
@@ -94,13 +122,15 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .push(".well-known")
             .push("openid-credential-issuer");
 
-        self.client
+        Ok(self
+            .client
             .get(openid_credential_issuer_endpoint)
             .send()
             .await?
             .json::<CredentialIssuerMetadata<CFC>>()
             .await
-            .map_err(|_| anyhow::anyhow!("Failed to get credential issuer metadata"))
+            .unwrap())
+        // .map_err(|_| anyhow::anyhow!("Failed to get credential issuer metadata"))
     }
 
     pub async fn get_authorization_code(
@@ -146,9 +176,9 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         token_response: &TokenResponse,
         credential_format: CFC,
     ) -> Result<CredentialResponse> {
-        let credential_request = CredentialRequest {
-            credential_format,
-            proof: Some(
+        let retry_with_proof = token_response.c_nonce.is_none();
+        let proof = if token_response.c_nonce.is_some() {
+            Some(
                 KeyProofType::builder()
                     .proof_type(ProofType::Jwt)
                     .signer(self.subject.clone())
@@ -157,7 +187,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                             .identifier(&self.default_subject_syntax_type.to_string())
                             .await?,
                     )
-                    .aud(credential_issuer_metadata.credential_issuer)
+                    .aud(credential_issuer_metadata.credential_issuer.clone())
                     .iat(1571324800)
                     .exp(9999999999i64)
                     // TODO: so is this REQUIRED or OPTIONAL?
@@ -171,18 +201,76 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                     .subject_syntax_type(self.default_subject_syntax_type.to_string())
                     .build()
                     .await?,
-            ),
+            )
+        } else {
+            None
+        };
+        let credential_request = CredentialRequest {
+            credential_format: credential_format.clone(),
+            proof,
         };
 
-        self.client
-            .post(credential_issuer_metadata.credential_endpoint)
-            .bearer_auth(token_response.access_token.clone())
-            .json(&credential_request)
-            .send()
-            .await?
-            .json()
-            .await
-            .map_err(|e| e.into())
+        if retry_with_proof {
+            let response = self
+                .client
+                .post(credential_issuer_metadata.credential_endpoint.clone())
+                .bearer_auth(token_response.access_token.clone())
+                .json(&credential_request)
+                .send()
+                .await?
+                .json::<serde_json::Value>()
+                .await?;
+            match serde_json::from_value::<CredentialResponse>(response.clone()) {
+                Ok(resp) => return Ok(resp),
+                Err(_) => {}
+            }
+            let c_nonce = response.get("c_nonce").unwrap().as_str().unwrap();
+
+            println!("using c_nonce --> {c_nonce}");
+
+            let proof = Some(
+                KeyProofType::builder()
+                    .proof_type(ProofType::Jwt)
+                    .signer(self.subject.clone())
+                    .iss(
+                        self.subject
+                            .identifier(&self.default_subject_syntax_type.to_string())
+                            .await?,
+                    )
+                    .aud(credential_issuer_metadata.credential_issuer)
+                    .iat(1571324800)
+                    .exp(9999999999i64)
+                    // TODO: so is this REQUIRED or OPTIONAL?
+                    .nonce(c_nonce.to_string())
+                    .subject_syntax_type(self.default_subject_syntax_type.to_string())
+                    .build()
+                    .await?,
+            );
+
+            let credential_request = CredentialRequest {
+                credential_format: credential_format.clone(),
+                proof,
+            };
+            self.client
+                .post(credential_issuer_metadata.credential_endpoint.clone())
+                .bearer_auth(token_response.access_token.clone())
+                .json(&credential_request)
+                .send()
+                .await?
+                .json()
+                .await
+                .map_err(|e| e.into())
+        } else {
+            self.client
+                .post(credential_issuer_metadata.credential_endpoint.clone())
+                .bearer_auth(token_response.access_token.clone())
+                .json(&credential_request)
+                .send()
+                .await?
+                .json()
+                .await
+                .map_err(|e| e.into())
+        }
     }
 
     pub async fn get_batch_credential(

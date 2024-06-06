@@ -34,7 +34,7 @@ where
 mod tests {
     use super::*;
     use crate::credential_format_profiles::{
-        w3c_verifiable_credentials::{jwt_vc_json, ldp_vc, CredentialSubject},
+        w3c_verifiable_credentials::{jwt_vc_json::{self, StringOrVec}, ldp_vc, CredentialSubject},
         CredentialFormats, Parameters,
     };
     use serde::de::DeserializeOwned;
@@ -68,10 +68,10 @@ mod tests {
                         credential_format: CredentialFormats::JwtVcJson(Parameters {
                             parameters: (
                                 jwt_vc_json::CredentialDefinition {
-                                    type_: vec![
+                                    type_: StringOrVec::Many(vec![
                                         "VerifiableCredential".to_string(),
                                         "UniversityDegreeCredential".to_string()
-                                    ],
+                                    ]),
                                     credential_subject: CredentialSubject {
                                         credential_subject: Some(json!({
                                             "given_name": {

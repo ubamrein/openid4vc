@@ -1,7 +1,15 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use did_key::{generate, resolve, Config, CoreSign, DIDCore, Document, Ed25519KeyPair, KeyMaterial, PatchedKeyPair};
+use did_key::{
+    generate, resolve, Config, CoreSign, DIDCore, Document, Ed25519KeyPair, KeyFormat, KeyMaterial, PatchedKeyPair,
+    VerificationMethod,
+};
+use jsonwebtoken::{
+    jwk::{self, CommonParameters, EllipticCurveKeyParameters, EllipticCurveKeyType, Jwk},
+    Algorithm,
+};
 use oid4vc_core::{authentication::sign::ExternalSign, Sign, Subject, Verify};
+use serde_json::Value;
 use std::sync::Arc;
 
 /// This [`KeySubject`] implements the [`Subject`] trait and can be used as a subject for a [`Provider`]. It uses the
@@ -27,6 +35,7 @@ impl KeySubject {
     /// Creates a new [`KeySubject`] from a [`PatchedKeyPair`].
     pub fn from_keypair(keypair: PatchedKeyPair, external_signer: Option<Arc<dyn ExternalSign>>) -> Self {
         let document = keypair.get_did_document(Config::default());
+
         KeySubject {
             keypair,
             document,
@@ -59,6 +68,30 @@ impl Sign for KeySubject {
 
     fn external_signer(&self) -> Option<Arc<dyn ExternalSign>> {
         self.external_signer.clone()
+    }
+    async fn jwt_header(&self) -> jsonwebtoken::Header {
+        let verification_method = &self.keypair.get_verification_methods(
+            Config {
+                use_jose_format: true,
+                serialize_secrets: false,
+            },
+            "",
+        )[0];
+        let key_format = verification_method.public_key.as_ref().unwrap();
+        let alg = match key_format {
+            KeyFormat::JWK(jwk) => match jwk.curve.as_str() {
+                "Ed25519" => Algorithm::EdDSA,
+                "P-256" => Algorithm::ES256,
+                "P-384" => Algorithm::ES384,
+                _ => unimplemented!(),
+            },
+            _ => unreachable!("we need JWK otherwise we don't know the keytype"),
+        };
+        jsonwebtoken::Header {
+            typ: Some("openid4vci-proof+jwt".to_string()),
+            alg,
+            ..Default::default()
+        }
     }
 }
 

@@ -1,4 +1,7 @@
-use jsonwebtoken::{Algorithm, Header};
+use jsonwebtoken::{
+    jwk::{CommonParameters, Jwk},
+    Algorithm, Header,
+};
 use oid4vc_core::{builder_fn, jwt, RFC7519Claims, Subject};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -61,12 +64,8 @@ impl ProofBuilder {
         match self.proof_type {
             Some(ProofType::Jwt) => Ok(KeyProofType::Jwt {
                 jwt: jwt::encode(
-                    self.signer.ok_or(anyhow::anyhow!("No subject found"))?.clone(),
-                    Header {
-                        alg: Algorithm::EdDSA,
-                        typ: Some("openid4vci-proof+jwt".to_string()),
-                        ..Default::default()
-                    },
+                    self.signer.as_ref().ok_or(anyhow::anyhow!("No subject found"))?.clone(),
+                    self.signer.ok_or(anyhow::anyhow!("No subject found"))?.jwt_header().await,
                     ProofOfPossession {
                         rfc7519_claims: self.rfc7519_claims,
                         nonce: self.nonce.ok_or(anyhow::anyhow!("No nonce found"))?,

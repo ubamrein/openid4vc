@@ -49,6 +49,9 @@ impl Sign for TestSubject {
     fn external_signer(&self) -> Option<Arc<dyn ExternalSign>> {
         None
     }
+    fn jwt_header(&self) -> jsonwebtoken::Header {
+        todo!{}
+    }
 }
 
 #[async_trait]

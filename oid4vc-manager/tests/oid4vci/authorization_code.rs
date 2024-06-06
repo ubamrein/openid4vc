@@ -89,6 +89,7 @@ async fn test_authorization_code_flow() {
         code: authorization_response.code,
         code_verifier: None,
         redirect_uri: None,
+        client_id: None
     };
 
     // Get the access token.

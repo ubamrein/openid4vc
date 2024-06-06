@@ -60,7 +60,10 @@ where
         .await
         .ok_or(anyhow!("No key identifier found."))?;
 
-    let jwt = JsonWebToken::new(header, claims).kid(kid);
+    println!("-----> {kid}");
+    let (kid, _) = kid.split_once("#").unwrap();
+
+    let jwt = JsonWebToken::new(header, claims).kid(kid.to_string());
 
     let message = [base64_url_encode(&jwt.header)?, base64_url_encode(&jwt.payload)?].join(".");
 

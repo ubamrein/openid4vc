@@ -10,6 +10,7 @@ use self::{
 };
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
+use w3c_verifiable_credentials::jwt_vc_json::JwtVcSdJwt;
 
 #[macro_export]
 macro_rules! credential_format {
@@ -101,6 +102,8 @@ where
 {
     #[serde(rename = "jwt_vc_json")]
     JwtVcJson(C::Container<JwtVcJson>),
+    #[serde(rename = "vc+sd-jwt")]
+    JwtVcSdJwt(C::Container<JwtVcSdJwt>),
     #[serde(rename = "jwt_vc_json-ld")]
     JwtVcJsonLd(C::Container<JwtVcJsonLd>),
     #[serde(rename = "ldp_vc")]
@@ -129,10 +132,12 @@ where
     pub fn format(&self) -> CredentialFormats {
         match self {
             CredentialFormats::JwtVcJson(_) => CredentialFormats::JwtVcJson(()),
+
             CredentialFormats::JwtVcJsonLd(_) => CredentialFormats::JwtVcJsonLd(()),
             CredentialFormats::LdpVc(_) => CredentialFormats::LdpVc(()),
             CredentialFormats::MsoMdoc(_) => CredentialFormats::MsoMdoc(()),
             CredentialFormats::Unknown => CredentialFormats::Unknown,
+            CredentialFormats::JwtVcSdJwt(_) => CredentialFormats::JwtVcSdJwt(()),
         }
     }
 }
@@ -145,6 +150,7 @@ impl CredentialFormats<WithCredential> {
             CredentialFormats::LdpVc(credential) => Ok(&credential.credential),
             CredentialFormats::MsoMdoc(credential) => Ok(&credential.credential),
             CredentialFormats::Unknown => Err(anyhow::anyhow!("Unknown credential format")),
+            CredentialFormats::JwtVcSdJwt(credential) => Ok(&credential.credential),
         }
     }
 }
@@ -156,6 +162,7 @@ mod tests {
         *,
     };
     use serde_json::json;
+    use w3c_verifiable_credentials::jwt_vc_json::StringOrVec;
 
     #[test]
     fn test_credential_formats() {
@@ -187,10 +194,10 @@ mod tests {
             CredentialFormats::JwtVcJson(Parameters {
                 parameters: JwtVcJsonParameters {
                     credential_definition: jwt_vc_json::CredentialDefinition {
-                        type_: vec![
+                        type_: StringOrVec::Many(vec![
                             "VerifiableCredential".to_string(),
                             "DriverLicenseCredential".to_string(),
-                        ],
+                        ]),
                         credential_subject: Default::default(),
                     },
                     order: None,

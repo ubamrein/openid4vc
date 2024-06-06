@@ -16,5 +16,18 @@ where
     pub redirect_uri: Option<String>,
     pub scope: Option<String>,
     pub state: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub authorization_details: Vec<AuthorizationDetailsObject<CFC>>,
+}
+
+#[skip_serializing_none]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PushedAuthorizationRequest {
+    pub response_type: String,
+    pub client_id: String,
+    pub redirect_uri: Option<String>,
+    pub scope: Option<String>,
+    pub state: Option<String>,
+    pub code_challenge: Option<String>,
+    pub code_challenge_method: Option<String>
 }
