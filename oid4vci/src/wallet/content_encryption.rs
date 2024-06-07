@@ -6,6 +6,7 @@
 
 use anyhow::bail;
 use base64::Engine;
+use constant_time_eq::constant_time_eq;
 use hmac::{Hmac, Mac};
 use libaes::Cipher;
 use rsa::rand_core::OsRng;
@@ -18,7 +19,7 @@ use crate::credential_request::{CredentialResponseEncryptionKey, CredentialRespo
 
 type HmacSha256 = Hmac<Sha256>;
 
-pub trait ContentDecryptor {
+pub trait ContentDecryptor: Send + Sync {
     fn public_key(&self) -> CredentialResponseEncryptionKey;
     fn encryption_specification(&self) -> CredentialResponseEncryptionSpecification;
     fn decrypt(&self, encrypted_token_response: &str) -> anyhow::Result<Vec<u8>>;
@@ -107,12 +108,14 @@ impl ContentDecryptor for RsaOAEP256 {
         hmac.update(&hmac_content);
         let auth_tag = hmac.finalize().into_bytes().to_vec();
 
-        if &auth_tag[..16] != &authentication_tag[..] {
-            bail!("authentication tag comparison failed\n calculated: {:?}\n provided: {authentication_tag:?} ", &auth_tag[..16]);
-        }
+        let tag_success = constant_time_eq(&auth_tag[..16], &authentication_tag[..]);
 
         let cipher = Cipher::new_128(&key);
-        Ok(cipher.cbc_decrypt(&iv, &data))
+        let decrypted_bytes = cipher.cbc_decrypt(&iv, &data);
+        match !tag_success {
+            true => Err(anyhow::anyhow!("auth tag missmatch")),
+            false => Ok(decrypted_bytes)
+        }
     }
 }
 
