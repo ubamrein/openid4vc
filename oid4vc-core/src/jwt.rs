@@ -61,7 +61,13 @@ where
         .ok_or(anyhow!("No key identifier found."))?;
 
     println!("-----> {kid}");
-    let (kid, _) = kid.split_once("#").unwrap();
+    let kid = if kid.contains("#") {
+        let (kid, _) = kid.split_once("#").unwrap();
+        kid.to_string()
+    } else {
+        kid
+    };
+
 
     let jwt = JsonWebToken::new(header, claims).kid(kid.to_string());
 

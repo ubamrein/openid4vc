@@ -45,6 +45,7 @@ sha2 = "0.10.8"
 libaes = "0.7.0"
 sha1 = "0.10.6"
 base64 = "0.22.1"
+hmac = "0.12.1"
 # TODO: Fix these dependencies once publishing to crates.io is automated.
 [dependencies]
 oid4vc-core = { path = "oid4vc-core" }
@@ -53,6 +54,7 @@ oid4vp = { path = "oid4vp" }
 siopv2 = { path = "siopv2" }
 oid4vc-manager = { path = "oid4vc-manager" }
 dif-presentation-exchange = { path = "dif-presentation-exchange" }
+
 
 
 

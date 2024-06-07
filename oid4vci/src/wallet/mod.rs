@@ -30,10 +30,13 @@ use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 use sha1::Sha1;
 use sha2::Sha256;
+use crate::wallet::content_encryption::ContentDecryptor;
+
+pub mod content_encryption;
 
 pub struct Wallet<CFC = CredentialFormats<WithParameters>>
-where
-    CFC: CredentialFormatCollection,
+    where
+        CFC: CredentialFormatCollection,
 {
     pub subject: SigningSubject,
     pub default_subject_syntax_type: SubjectSyntaxType,
@@ -214,28 +217,8 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         credential_issuer_metadata: CredentialIssuerMetadata<CFC>,
         token_response: &TokenResponse,
         credential_format: CFC,
+        content_decryptor: Option<Box<dyn ContentDecryptor>>,
     ) -> Result<CredentialResponse> {
-        let privatekey = rsa::RsaPrivateKey::new(&mut OsRng, 2048).unwrap();
-        let pub_key = privatekey.to_public_key();
-        let exponent = pub_key.e().to_bytes_be();
-        let e = base64_encode_bytes(&exponent);
-        let n = pub_key.n().to_bytes_be();
-        let n = base64_encode_bytes(&n);
-        println!("{:?}", pub_key);
-        let jwk = CredentialResponseEncryptionKey::Rsa {
-            alg: "RSA-OAEP-256".to_string(),
-            n,
-            e,
-            kid: "rsa-key".to_string(),
-            r#use: "enc".to_string(),
-            kty: "RSA".to_string(),
-        };
-        let encryption_spec = CredentialResponseEncryptionSpecification {
-            jwk,
-            enc: "A128CBC-HS256".to_string(),
-            alg: "RSA-OAEP-256".to_string(),
-        };
-
         let retry_with_proof = token_response.c_nonce.is_none();
         let proof = if token_response.c_nonce.is_some() {
             Some(
@@ -265,26 +248,47 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         } else {
             None
         };
+        let credential_response_encryption = if let Some(content_decryptor) = content_decryptor.as_ref() {
+            Some(content_decryptor.encryption_specification())
+        } else {
+            None
+        };
         let credential_request = CredentialRequest {
             credential_format: credential_format.clone(),
             proof,
-            credential_response_encryption: Some(encryption_spec.clone()),
+            credential_response_encryption: credential_response_encryption.clone(),
         };
 
         if retry_with_proof {
-            let response = self
+            let mut response = self
                 .client
                 .post(credential_issuer_metadata.credential_endpoint.clone())
                 .bearer_auth(token_response.access_token.clone())
                 .json(&credential_request)
                 .send()
                 .await?
-                .json::<serde_json::Value>()
+                .text()
                 .await?;
-            match serde_json::from_value::<CredentialResponse>(response.clone()) {
+            let response_value = serde_json::from_str::<Value>(&response);
+            // it is no json, so try to decrypt
+            if response_value.is_err() {
+                if let Some(content_decryptor) = content_decryptor.as_ref() {
+                    let Ok(decrypted_response) = content_decryptor.decrypt(&response) else {
+                        bail!("Could not decrypt content");
+                    };
+                    let Ok(decrypted_json) = std::str::from_utf8(&decrypted_response) else {
+                        bail!("Decrypted content is not valid utf8");
+                    };
+                    response = decrypted_json.to_string();
+                } else {
+                    bail!("Content is probably encrypted");
+                }
+            }
+            match serde_json::from_str::<CredentialResponse>(&response) {
                 Ok(resp) => return Ok(resp),
                 Err(_) => {}
             }
+            let response = response_value.unwrap();
             let c_nonce = response.get("c_nonce").unwrap().as_str().unwrap();
 
             println!("using c_nonce --> {c_nonce}");
@@ -311,9 +315,9 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             let credential_request = CredentialRequest {
                 credential_format: credential_format.clone(),
                 proof,
-                credential_response_encryption: Some(encryption_spec.clone()),
+                credential_response_encryption: credential_response_encryption.clone(),
             };
-            let Ok(encrypted_payload) = self
+            let Ok(response) = self
                 .client
                 .post(credential_issuer_metadata.credential_endpoint.clone())
                 .bearer_auth(token_response.access_token.clone())
@@ -322,28 +326,23 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                 .await?
                 .text()
                 .await
-            else {
-                bail!("failure retrieveing stuff");
-            };
-            //c.f. https://datatracker.ietf.org/doc/html/rfc7516#appendix-A.2.7
-            let split_parts = encrypted_payload.split('.').collect::<Vec<_>>();
-            let [_header, encrypted_key, iv, payload, ..] = split_parts.as_slice() else {
-                bail!("too less arguments");
-            };
-            let oaep = rsa::Oaep::new_with_mgf_hash::<Sha256, Sha256>();
-            println!("{encrypted_key}");
-            let decrypted_key = privatekey
-                .decrypt(oaep, &base64_url_decode(&encrypted_key.as_bytes()).unwrap())
-                .unwrap();
-            let mut key = [0; 16];
-            // first 16 bytes are for hmac second 16 bytes are for aes128CBC
-            key.copy_from_slice(&decrypted_key[16..]);
-            let cipher = Cipher::new_128(&key);
-            let iv = base64_url_decode(iv).unwrap();
-            let data = base64_url_decode(payload).unwrap();
-            let result = cipher.cbc_decrypt(&iv, &data);
-            println!("The text: ---> {}", String::from_utf8_lossy(&result));
-            serde_json::from_slice(&result).map_err(|e| e.into())
+                else {
+                    bail!("failure retrieveing stuff");
+                };
+
+            match serde_json::from_str::<CredentialResponse>(&response) {
+                Ok(resp) =>  Ok(resp),
+                Err(_) if content_decryptor.is_some() => {
+                    // let's try to decrypt (we checked for is_some so this is valid, workaround until we have let guards)
+                    let content_decryptor = content_decryptor.as_ref().unwrap();
+                    let decyrpted_content = match content_decryptor.decrypt(&response) {
+                        Ok(content) => content,
+                        Err(e) => return Err(anyhow::anyhow!(e))
+                    };
+                    serde_json::from_slice(&decyrpted_content).map_err(|e| anyhow::anyhow!(e))
+                }
+                _ => bail!("Content is probably encrypted")
+            }
         } else {
             self.client
                 .post(credential_issuer_metadata.credential_endpoint.clone())
@@ -424,36 +423,5 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .json()
             .await
             .map_err(|e| e.into())
-    }
-}
-
-pub fn base64_encode_bytes<T: AsRef<[u8]>>(bytes: &T) -> String {
-    base64::prelude::BASE64_URL_SAFE_NO_PAD.encode(bytes.as_ref())
-}
-pub fn base64_decode_bytes<T: AsRef<[u8]>>(bytes: &T) -> Result<Vec<u8>> {
-   let Ok(result) = base64::prelude::BASE64_URL_SAFE_NO_PAD.decode(bytes.as_ref()) else {
-    bail!("Could not decode");
-   };
-   Ok(result)
-}
-#[cfg(test)]
-mod tests {
-    use oid4vc_core::jwt::base64_url_encode;
-    use rsa::{rand_core::OsRng, traits::PublicKeyParts};
-
-    use crate::wallet::base64_encode_bytes;
-
-    #[test]
-    fn test_rsa_mod() {
-        let privatekey = rsa::RsaPrivateKey::new(&mut OsRng, 2048).unwrap();
-        let pub_key = privatekey.to_public_key();
-        let exponent = pub_key.e().to_bytes_be();
-
-        let e = base64_encode_bytes(&exponent);
-        let n = pub_key.n().to_bytes_be();
-        let n = base64_encode_bytes(&n);
-        println!("{:?}", exponent);
-        println!("{}", pub_key.e().to_string());
-        println!("{}", e);
     }
 }
