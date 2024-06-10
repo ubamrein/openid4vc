@@ -108,19 +108,19 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .push(".well-known")
             .push("openid-configuration");
 
-        if let Ok(result) = self.client.get(oidc_authorization_server_endpoint).send().await {
+        if let Ok(result) = self.client.get(oidc_authorization_server_endpoint.clone()).send().await {
             result
                 .json::<AuthorizationServerMetadata>()
                 .await
-                .map_err(|_| anyhow::anyhow!("Failed to get authorization server metadata [oidc]"))
+                .map_err(|e| anyhow::anyhow!("Failed to get authorization server metadata [oidc] {e} ({})", oidc_authorization_server_endpoint))
         } else {
             self.client
-                .get(oauth_authorization_server_endpoint)
+                .get(oauth_authorization_server_endpoint.clone())
                 .send()
                 .await?
                 .json::<AuthorizationServerMetadata>()
                 .await
-                .map_err(|_| anyhow::anyhow!("Failed to get authorization server metadata [oauth]"))
+                .map_err(|e| anyhow::anyhow!("Failed to get authorization server metadata [oauth]: {e} ({oauth_authorization_server_endpoint})"))
         }
     }
 
