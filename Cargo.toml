@@ -27,7 +27,7 @@ repository = "https://github.com/impierce/openid4vc"
 chrono = "0.4"
 getset = "0.1"
 identity_core = "1.2.0"
-identity_credential = { version = "1.2.0", default-features = false, features = ["validator", "credential", "presentation"] }
+identity_credential = { version = "=1.2.0", default-features = false, features = ["validator", "credential", "presentation"] }
 is_empty = "0.2"
 jsonwebtoken = "8.2"
 monostate = "0.1"
