@@ -53,6 +53,8 @@ pub enum ClaimFormatDesignation {
     AcVc,
     AcVp,
     MsoMdoc,
+    #[serde(rename = "vc+sd-jwt")]
+    VcSdJwt,
 }
 
 #[allow(dead_code)]
