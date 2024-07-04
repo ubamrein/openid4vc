@@ -121,8 +121,7 @@ impl AuthorizationRequestBuilder {
                         client_id,
                         redirect_uri: self
                             .redirect_uri
-                            .take()
-                            .ok_or_else(|| anyhow!("redirect_uri parameter is required."))?,
+                            .take(),
                         state: self.state.take(),
                         extension,
                     },

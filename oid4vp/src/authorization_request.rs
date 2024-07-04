@@ -34,6 +34,7 @@ pub struct AuthorizationRequestParameters {
     pub presentation_definition: PresentationDefinition,
     pub client_id_scheme: Option<ClientIdScheme>,
     pub response_mode: Option<String>,
+    pub response_uri: Option<String>,
     pub scope: Option<Scope>,
     pub nonce: String,
     #[serde(flatten)]
@@ -58,6 +59,7 @@ pub struct AuthorizationRequestBuilder {
     state: Option<String>,
     scope: Option<Scope>,
     response_mode: Option<String>,
+    response_uri: Option<String>,
     nonce: Option<String>,
     client_metadata: Option<ClientMetadataResource<ClientMetadataParameters>>,
     custom_url_scheme: Option<String>,
@@ -72,6 +74,7 @@ impl AuthorizationRequestBuilder {
     builder_fn!(rfc7519_claims, iat, i64);
     builder_fn!(rfc7519_claims, jti, String);
     builder_fn!(response_mode, String);
+    builder_fn!(response_uri, String);
     builder_fn!(client_id, String);
     builder_fn!(scope, Scope);
     builder_fn!(redirect_uri, url::Url);
@@ -95,6 +98,7 @@ impl AuthorizationRequestBuilder {
                     client_id_scheme: self.client_id_scheme.take(),
                     scope: self.scope.take(),
                     response_mode: self.response_mode.take(),
+                    response_uri: self.response_uri.take(),
                     nonce: self
                         .nonce
                         .take()
@@ -109,8 +113,7 @@ impl AuthorizationRequestBuilder {
                         client_id,
                         redirect_uri: self
                             .redirect_uri
-                            .take()
-                            .ok_or_else(|| anyhow!("redirect_uri parameter is required."))?,
+                            .take(),
                         state: self.state.take(),
                         extension,
                     },

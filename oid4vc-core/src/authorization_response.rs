@@ -8,7 +8,7 @@ use serde_with::skip_serializing_none;
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct AuthorizationResponse<E: Extension> {
     #[serde(skip)]
-    pub redirect_uri: String,
+    pub redirect_uri: Option<String>,
     pub state: Option<String>,
     #[serde(flatten)]
     pub extension: <E::ResponseHandle as ResponseHandle>::Parameters,

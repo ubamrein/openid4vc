@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use oid4vc_core::{
     authentication::subject::SigningSubject,
     authorization_request::{AuthorizationRequest, Body, ByReference, ByValue, Object},
@@ -87,7 +87,7 @@ impl Provider {
         authorization_request: &AuthorizationRequest<Object<E>>,
         input: <E::ResponseHandle as ResponseHandle>::Input,
     ) -> Result<AuthorizationResponse<E>> {
-        let redirect_uri = authorization_request.body.redirect_uri.to_string();
+        let redirect_uri = authorization_request.body.redirect_uri.as_ref().map(|uri| uri.to_string());
         let state = authorization_request.body.state.clone();
 
         let jwts = E::generate_token(
@@ -108,7 +108,7 @@ impl Provider {
     ) -> Result<StatusCode> {
         Ok(self
             .client
-            .post(authorization_response.redirect_uri.clone())
+            .post(authorization_response.redirect_uri.clone().context("No redirect_uri set!")?)
             .form(&authorization_response)
             .send()
             .await?

@@ -37,7 +37,7 @@ pub trait Extension: Serialize + PartialEq + Sized + std::fmt::Debug + Clone + S
     fn build_authorization_response(
         _jwts: Vec<String>,
         _user_input: <Self::ResponseHandle as ResponseHandle>::Input,
-        _redirect_uri: String,
+        _redirect_uri: Option<String>,
         _state: Option<String>,
     ) -> anyhow::Result<AuthorizationResponse<Self>> {
         // Will be overwritten by the extension.
