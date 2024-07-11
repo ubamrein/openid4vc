@@ -19,6 +19,72 @@ impl FieldQueryResult {
     }
 }
 
+// Input Evaluation as described in section [8. Input
+/// Evaluation](https://identity.foundation/presentation-exchange/spec/v2.0.0/#input-evaluation) of the DIF
+/// Presentation Exchange specification.
+pub fn evaluate_input_raw(
+    input_descriptor: &InputDescriptor,
+    value: &serde_json::Value,
+) -> Option<Vec<FieldQueryResult>> {
+    let selector = &mut jsonpath::selector(value);
+
+    input_descriptor
+        .constraints()
+        .fields()
+        .as_ref()
+        .map(|fields| {
+            let results: Vec<FieldQueryResult> = fields
+                .iter()
+                .map(|field| {
+                    let filter = field
+                        .filter()
+                        .as_ref()
+                        .map(JSONSchema::compile)
+                        .transpose()
+                        .ok()
+                        .flatten();
+
+                    // For each JSONPath expression in the `path` array (incrementing from the 0-index),
+                    // evaluate the JSONPath expression against the candidate input and repeat the following
+                    // subsequence on the result.
+                    field
+                        .path()
+                        .iter()
+                        // Repeat until a Field Query Result is found, or the path array elements are exhausted:
+                        .find_map(|path| {
+                            // If the result returned no JSONPath match, skip to the next path array element.
+                            // Else, evaluate the first JSONPath match (candidate) as follows:
+                            selector(path).ok().and_then(|values| {
+                                values.into_iter().find_map(|result| {
+                                    // If the fields object has no `filter`, or if candidate validates against
+                                    // the JSON Schema descriptor specified in `filter`, then:
+                                    filter
+                                        .as_ref()
+                                        .map(|filter| filter.is_valid(result))
+                                        .unwrap_or(true)
+                                        // set Field Query Result to be candidate
+                                        .then(|| FieldQueryResult::Some {
+                                            value: result.to_owned(),
+                                            path: path.to_owned(),
+                                        })
+                                    // Else, skip to the next `path` array element.
+                                })
+                            })
+                        })
+                        // If no value is located for any of the specified `path` queries, and the fields
+                        // object DOES NOT contain the `optional` property or it is set to `false`, reject the
+                        // field as invalid. If no value is located for any of the specified `path` queries and
+                        // the fields object DOES contain the `optional` property set to the value `true`,
+                        // treat the field as valid and proceed to the next fields object.
+                        .or_else(|| field.optional().and_then(|opt| opt.then(|| FieldQueryResult::None)))
+                        .unwrap_or(FieldQueryResult::Invalid)
+                })
+                .collect();
+            results.iter().all(FieldQueryResult::is_valid).then_some(results)
+        })
+        .flatten()
+}
+
 /// Input Evaluation as described in section [8. Input
 /// Evaluation](https://identity.foundation/presentation-exchange/spec/v2.0.0/#input-evaluation) of the DIF
 /// Presentation Exchange specification.
