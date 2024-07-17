@@ -9,7 +9,7 @@ credential_format!("jwt_vc_json", JwtVcJson, {
     order: Option<String>
 });
 credential_format!("vc+sd-jwt", JwtVcSdJwt, {
-    credential_definition: CredentialDefinition,
+    credential_definition: Option<CredentialDefinition>,
     vct: String,
     order: Option<String>
 });
