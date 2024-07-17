@@ -70,6 +70,7 @@ impl Extension for OID4VP {
             Header::new(Algorithm::EdDSA),
             vp_token,
             &subject_syntax_type_string,
+            false
         )
         .await?;
         Ok(vec![jwt])

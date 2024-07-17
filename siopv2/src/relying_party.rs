@@ -40,6 +40,7 @@ impl RelyingParty {
             Header::new(Algorithm::EdDSA),
             authorization_request,
             &self.default_subject_syntax_type.to_string(),
+            true
         )
         .await
     }

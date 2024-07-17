@@ -63,6 +63,7 @@ impl Extension for SIOPv2 {
             Header::new(Algorithm::EdDSA),
             id_token,
             &subject_syntax_type_string,
+            true
         )
         .await?;
 

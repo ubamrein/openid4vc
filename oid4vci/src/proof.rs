@@ -60,7 +60,7 @@ impl ProofBuilder {
         let subject_syntax_type = self
             .subject_syntax_type
             .ok_or(anyhow::anyhow!("subject_syntax_type is required"))?;
-
+        
         match self.proof_type {
             Some(ProofType::Jwt) => Ok(KeyProofType::Jwt {
                 jwt: jwt::encode(
@@ -71,6 +71,7 @@ impl ProofBuilder {
                         nonce: self.nonce.ok_or(anyhow::anyhow!("No nonce found"))?,
                     },
                     &subject_syntax_type,
+                    false
                 )
                 .await?,
             }),

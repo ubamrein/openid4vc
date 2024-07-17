@@ -50,7 +50,13 @@ where
     Ok(jsonwebtoken::decode::<T>(jwt, &key, &validation)?.claims)
 }
 
-pub async fn encode<C, S>(signer: Arc<S>, header: Header, claims: C, subject_syntax_type: &str) -> Result<String>
+pub async fn encode<C, S>(
+    signer: Arc<S>,
+    header: Header,
+    claims: C,
+    subject_syntax_type: &str,
+    with_kid: bool,
+) -> Result<String>
 where
     C: Serialize,
     S: Sign + ?Sized,
@@ -68,8 +74,11 @@ where
         kid
     };
 
-
-    let jwt = JsonWebToken::new(header, claims).kid(kid.to_string());
+    let jwt = if with_kid {
+        JsonWebToken::new(header, claims).kid(kid.to_string())
+    } else {
+        JsonWebToken::new(header, claims)
+    };
 
     let message = [base64_url_encode(&jwt.header)?, base64_url_encode(&jwt.payload)?].join(".");
 
@@ -114,7 +123,7 @@ mod tests {
             "nonce": "nonce",
         });
         let subject = TestSubject::new("did:test:123".to_string(), "key_id".to_string()).unwrap();
-        let encoded = encode(Arc::new(subject), Header::new(Algorithm::EdDSA), claims, "did:test")
+        let encoded = encode(Arc::new(subject), Header::new(Algorithm::EdDSA), claims, "did:test", true)
             .await
             .unwrap();
 

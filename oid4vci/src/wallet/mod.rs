@@ -1,3 +1,6 @@
+use std::ops::Add;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
 use crate::authorization_details::AuthorizationDetailsObject;
 use crate::authorization_request::{AuthorizationRequest, PushedAuthorizationRequest};
 use crate::authorization_response::AuthorizationResponse;
@@ -12,6 +15,7 @@ use crate::credential_request::{
 };
 use crate::credential_response::{BatchCredentialResponse, CredentialResponseType};
 use crate::proof::{KeyProofType, ProofType};
+use crate::wallet::content_encryption::ContentDecryptor;
 use crate::{credential_response::CredentialResponse, token_request::TokenRequest, token_response::TokenResponse};
 use anyhow::{bail, Result};
 use base64::Engine;
@@ -30,13 +34,12 @@ use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 use sha1::Sha1;
 use sha2::Sha256;
-use crate::wallet::content_encryption::ContentDecryptor;
 
 pub mod content_encryption;
 
 pub struct Wallet<CFC = CredentialFormats<WithParameters>>
-    where
-        CFC: CredentialFormatCollection,
+where
+    CFC: CredentialFormatCollection,
 {
     pub subject: SigningSubject,
     pub default_subject_syntax_type: SubjectSyntaxType,
@@ -72,7 +75,11 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .post(par_endpoint)
             .form(&auth_request)
             .send()
-            .await?
+            .await
+            .map_err(|e| {
+                println!("--> {e}");
+                e
+            })?
             .json()
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))
@@ -109,10 +116,12 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .push("openid-configuration");
 
         if let Ok(result) = self.client.get(oidc_authorization_server_endpoint.clone()).send().await {
-            result
-                .json::<AuthorizationServerMetadata>()
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to get authorization server metadata [oidc] {e} ({})", oidc_authorization_server_endpoint))
+            result.json::<AuthorizationServerMetadata>().await.map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to get authorization server metadata [oidc] {e} ({})",
+                    oidc_authorization_server_endpoint
+                )
+            })
         } else {
             self.client
                 .get(oauth_authorization_server_endpoint.clone())
@@ -218,21 +227,22 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         token_response: &TokenResponse,
         credential_format: CFC,
         content_decryptor: Option<Box<dyn ContentDecryptor>>,
+        client_id: &str
     ) -> Result<CredentialResponse> {
         let retry_with_proof = token_response.c_nonce.is_none();
+        let timestamp = SystemTime::now();
+        let timestamp = timestamp.duration_since(UNIX_EPOCH).expect("Time went backwards");
         let proof = if token_response.c_nonce.is_some() {
             Some(
                 KeyProofType::builder()
                     .proof_type(ProofType::Jwt)
                     .signer(self.subject.clone())
                     .iss(
-                        self.subject
-                            .identifier(&self.default_subject_syntax_type.to_string())
-                            .await?,
+                        client_id
                     )
                     .aud(credential_issuer_metadata.credential_issuer.clone())
-                    .iat(1571324800)
-                    .exp(9999999999i64)
+                    .iat(timestamp.as_secs() as i64)
+                    .exp((timestamp + Duration::from_secs(360)).as_secs() as i64)
                     // TODO: so is this REQUIRED or OPTIONAL?
                     .nonce(
                         token_response
@@ -326,33 +336,43 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                 .await?
                 .text()
                 .await
-                else {
-                    bail!("failure retrieveing stuff");
-                };
+            else {
+                bail!("failure retrieveing stuff");
+            };
 
             match serde_json::from_str::<CredentialResponse>(&response) {
-                Ok(resp) =>  Ok(resp),
+                Ok(resp) => Ok(resp),
                 Err(_) if content_decryptor.is_some() => {
                     // let's try to decrypt (we checked for is_some so this is valid, workaround until we have let guards)
                     let content_decryptor = content_decryptor.as_ref().unwrap();
                     let decyrpted_content = match content_decryptor.decrypt(&response) {
                         Ok(content) => content,
-                        Err(e) => return Err(anyhow::anyhow!(e))
+                        Err(e) => return Err(anyhow::anyhow!(e)),
                     };
                     serde_json::from_slice(&decyrpted_content).map_err(|e| anyhow::anyhow!(e))
                 }
-                _ => bail!("Content is probably encrypted")
+                _ => bail!("Content is probably encrypted"),
             }
         } else {
-            self.client
+            let response = self
+                .client
                 .post(credential_issuer_metadata.credential_endpoint.clone())
                 .bearer_auth(token_response.access_token.clone())
                 .json(&credential_request)
                 .send()
-                .await?
-                .json()
-                .await
-                .map_err(|e| e.into())
+                .await?;
+            let text = response.text().await?;
+            println!("{text}");
+            serde_json::from_str(&text).map_err(|e| e.into())
+            // self.client
+            //     .post(credential_issuer_metadata.credential_endpoint.clone())
+            //     .bearer_auth(token_response.access_token.clone())
+            //     .json(&credential_request)
+            //     .send()
+            //     .await?
+            //     .json()
+            //     .await
+            //     .map_err(|e| e.into())
         }
     }
 
