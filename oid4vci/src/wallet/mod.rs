@@ -114,14 +114,13 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .unwrap()
             .push(".well-known")
             .push("openid-configuration");
-
-        if let Ok(result) = self.client.get(oidc_authorization_server_endpoint.clone()).send().await {
-            result.json::<AuthorizationServerMetadata>().await.map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to get authorization server metadata [oidc] {e} ({})",
-                    oidc_authorization_server_endpoint
-                )
-            })
+        let response = self
+            .client
+            .get(oidc_authorization_server_endpoint.clone())
+            .send()
+            .await?;
+        if let Ok(result) = response.json::<AuthorizationServerMetadata>().await {
+            Ok(result)
         } else {
             self.client
                 .get(oauth_authorization_server_endpoint.clone())
@@ -227,7 +226,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         token_response: &TokenResponse,
         credential_format: CFC,
         content_decryptor: Option<Box<dyn ContentDecryptor>>,
-        client_id: &str
+        client_id: &str,
     ) -> Result<CredentialResponse> {
         let retry_with_proof = token_response.c_nonce.is_none();
         let timestamp = SystemTime::now();
@@ -237,9 +236,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                 KeyProofType::builder()
                     .proof_type(ProofType::Jwt)
                     .signer(self.subject.clone())
-                    .iss(
-                        client_id
-                    )
+                    .iss(client_id)
                     .aud(credential_issuer_metadata.credential_issuer.clone())
                     .iat(timestamp.as_secs() as i64)
                     .exp((timestamp + Duration::from_secs(360)).as_secs() as i64)
