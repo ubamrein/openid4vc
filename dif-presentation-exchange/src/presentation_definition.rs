@@ -30,7 +30,7 @@ pub struct InputDescriptor {
     pub(crate) id: String,
     pub(crate) name: Option<String>,
     pub(crate) purpose: Option<String>,
-    pub(crate) format: Option<HashMap<ClaimFormatDesignation, ClaimFormatProperty>>,
+    pub(crate) format: Option<HashMap<ClaimFormatDesignation, Option<ClaimFormatProperty>>>,
     #[getset(get = "pub")]
     pub(crate) constraints: Constraints,
     pub(crate) schema: Option<String>,
@@ -131,7 +131,7 @@ mod tests {
                     purpose: None,
                     format: Some(HashMap::from_iter(vec![(
                         ClaimFormatDesignation::AcVc,
-                        ClaimFormatProperty::ProofType(vec!["CLSignature2019".to_string()])
+                        Some(ClaimFormatProperty::ProofType(vec!["CLSignature2019".to_string()]))
                     )])),
                     constraints: Constraints {
                         limit_disclosure: Some(LimitDisclosure::Required),
@@ -172,7 +172,7 @@ mod tests {
                     purpose: None,
                     format: Some(HashMap::from_iter(vec![(
                         ClaimFormatDesignation::AcVc,
-                        ClaimFormatProperty::ProofType(vec!["CLSignature2019".to_string()])
+                        Some(ClaimFormatProperty::ProofType(vec!["CLSignature2019".to_string()]))
                     )])),
                     constraints: Constraints {
                         fields: Some(vec![Field {
@@ -203,7 +203,7 @@ mod tests {
                     purpose: None,
                     format: Some(HashMap::from_iter(vec![(
                         ClaimFormatDesignation::JwtVcJson,
-                        ClaimFormatProperty::ProofType(vec!["JsonWebSignature2020".to_string()])
+                        Some(ClaimFormatProperty::ProofType(vec!["JsonWebSignature2020".to_string()]))
                     )])),
                     constraints: Constraints {
                         fields: Some(vec![Field {
@@ -236,7 +236,7 @@ mod tests {
                     purpose: None,
                     format: Some(HashMap::from_iter(vec![(
                         ClaimFormatDesignation::LdpVc,
-                        ClaimFormatProperty::ProofType(vec!["Ed25519Signature2018".to_string()])
+                        Some(ClaimFormatProperty::ProofType(vec!["Ed25519Signature2018".to_string()]))
                     )])),
                     constraints: Constraints {
                         fields: Some(vec![Field {
@@ -270,7 +270,7 @@ mod tests {
                     purpose: None,
                     format: Some(HashMap::from_iter(vec![(
                         ClaimFormatDesignation::MsoMdoc,
-                        ClaimFormatProperty::Alg(vec!["EdDSA".to_string(), "ES256".to_string()])
+                        Some(ClaimFormatProperty::Alg(vec!["EdDSA".to_string(), "ES256".to_string()]))
                     )])),
                     constraints: Constraints {
                         limit_disclosure: Some(LimitDisclosure::Required),
@@ -323,7 +323,7 @@ mod tests {
                     purpose: None,
                     format: Some(HashMap::from_iter(vec![(
                         ClaimFormatDesignation::LdpVc,
-                        ClaimFormatProperty::ProofType(vec!["Ed25519Signature2018".to_string()])
+                        Some(ClaimFormatProperty::ProofType(vec!["Ed25519Signature2018".to_string()]))
                     )])),
                     constraints: Constraints {
                         fields: Some(vec![
@@ -368,7 +368,7 @@ mod tests {
                     purpose: None,
                     format: Some(HashMap::from_iter(vec![(
                         ClaimFormatDesignation::LdpVc,
-                        ClaimFormatProperty::ProofType(vec!["Ed25519Signature2018".to_string()])
+                        Some(ClaimFormatProperty::ProofType(vec!["Ed25519Signature2018".to_string()]))
                     )])),
                     constraints: Constraints {
                         fields: Some(vec![Field {
