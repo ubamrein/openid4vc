@@ -16,7 +16,7 @@ pub struct PresentationDefinition {
     pub(crate) input_descriptors: Vec<InputDescriptor>,
     pub(crate) name: Option<String>,
     pub(crate) purpose: Option<String>,
-    #[serde(deserialize_with = "deserialize_option_map")]
+    #[serde(default, deserialize_with = "deserialize_format")]
     pub(crate) format: Option<HashMap<ClaimFormatDesignation, Option<ClaimFormatProperty>>>,
 }
 
@@ -31,37 +31,32 @@ pub struct InputDescriptor {
     pub(crate) id: String,
     pub(crate) name: Option<String>,
     pub(crate) purpose: Option<String>,
-    #[serde(deserialize_with = "deserialize_option_map")]
+    #[serde(default, deserialize_with = "deserialize_format")]
     pub(crate) format: Option<HashMap<ClaimFormatDesignation, Option<ClaimFormatProperty>>>,
     #[getset(get = "pub")]
     pub(crate) constraints: Constraints,
     pub(crate) schema: Option<String>,
 }
 
-fn deserialize_option_map<'de, D>(
+fn deserialize_format<'de, D>(
     deserializer: D,
 ) -> Result<Option<HashMap<ClaimFormatDesignation, Option<ClaimFormatProperty>>>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let opt_map = Option::<HashMap<ClaimFormatDesignation, serde_json::Value>>::deserialize(deserializer)?;
-    match opt_map {
-        None => Ok(None),
-        Some(map) => {
-            let mut result = HashMap::new();
-            for (key, value) in map {
-                if value.is_object() && value.as_object().unwrap().is_empty() {
-                    result.insert(key, None);
-                } else {
-                    let enum_value = serde_json::from_value(value)
-                        .map(Some)
-                        .map_err(serde::de::Error::custom)?;
-                    result.insert(key, enum_value);
-                }
-            }
-            Ok(Some(result))
-        }
+    let opt_value: Option<HashMap<ClaimFormatDesignation, serde_json::Value>> = Option::deserialize(deserializer)?;
+    let Some(value) = opt_value else { return Ok(None) };
+
+    let mut map = HashMap::new();
+    for (key, val) in value {
+        let parsed_val = if val.as_object().map(|o| o.is_empty()).unwrap_or(false) {
+            None
+        } else {
+            Some(serde_json::from_value(val).map_err(serde::de::Error::custom)?)
+        };
+        map.insert(key, parsed_val);
     }
+    Ok(Some(map))
 }
 
 // Its value MUST be an array of one or more format-specific algorithmic identifier references
@@ -91,6 +86,8 @@ pub enum ClaimFormatDesignation {
 pub enum ClaimFormatProperty {
     Alg(Vec<String>),
     ProofType(Vec<String>),
+    #[serde(other)]
+    None,
 }
 
 #[allow(dead_code)]
