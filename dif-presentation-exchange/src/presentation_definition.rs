@@ -1,5 +1,5 @@
 use getset::Getters;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 
@@ -16,7 +16,8 @@ pub struct PresentationDefinition {
     pub(crate) input_descriptors: Vec<InputDescriptor>,
     pub(crate) name: Option<String>,
     pub(crate) purpose: Option<String>,
-    pub(crate) format: Option<HashMap<ClaimFormatDesignation, ClaimFormatProperty>>,
+    #[serde(deserialize_with = "deserialize_option_map")]
+    pub(crate) format: Option<HashMap<ClaimFormatDesignation, Option<ClaimFormatProperty>>>,
 }
 
 /// As specified in https://identity.foundation/presentation-exchange/#input-descriptor-object.
@@ -30,10 +31,37 @@ pub struct InputDescriptor {
     pub(crate) id: String,
     pub(crate) name: Option<String>,
     pub(crate) purpose: Option<String>,
+    #[serde(deserialize_with = "deserialize_option_map")]
     pub(crate) format: Option<HashMap<ClaimFormatDesignation, Option<ClaimFormatProperty>>>,
     #[getset(get = "pub")]
     pub(crate) constraints: Constraints,
     pub(crate) schema: Option<String>,
+}
+
+fn deserialize_option_map<'de, D>(
+    deserializer: D,
+) -> Result<Option<HashMap<ClaimFormatDesignation, Option<ClaimFormatProperty>>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt_map = Option::<HashMap<ClaimFormatDesignation, serde_json::Value>>::deserialize(deserializer)?;
+    match opt_map {
+        None => Ok(None),
+        Some(map) => {
+            let mut result = HashMap::new();
+            for (key, value) in map {
+                if value.is_object() && value.as_object().unwrap().is_empty() {
+                    result.insert(key, None);
+                } else {
+                    let enum_value = serde_json::from_value(value)
+                        .map(Some)
+                        .map_err(serde::de::Error::custom)?;
+                    result.insert(key, enum_value);
+                }
+            }
+            Ok(Some(result))
+        }
+    }
 }
 
 // Its value MUST be an array of one or more format-specific algorithmic identifier references
