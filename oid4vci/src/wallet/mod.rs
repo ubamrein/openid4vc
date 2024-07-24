@@ -219,19 +219,19 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .map_err(|e| e.into())
     }
 
-    //TODO: make encryption/decryption abstract and ooptional
     pub async fn get_credential(
         &self,
         credential_issuer_metadata: CredentialIssuerMetadata<CFC>,
-        token_response: &TokenResponse,
+        access_token: String,
+        c_nonce: Option<String>,
         credential_format: CFC,
         content_decryptor: Option<Box<dyn ContentDecryptor>>,
         client_id: &str,
     ) -> Result<CredentialResponse> {
-        let retry_with_proof = token_response.c_nonce.is_none();
+        let retry_with_proof = c_nonce.is_none();
         let timestamp = SystemTime::now();
         let timestamp = timestamp.duration_since(UNIX_EPOCH).expect("Time went backwards");
-        let proof = if token_response.c_nonce.is_some() {
+        let proof = if c_nonce.is_some() {
             Some(
                 KeyProofType::builder()
                     .proof_type(ProofType::Jwt)
@@ -240,14 +240,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                     .aud(credential_issuer_metadata.credential_issuer.clone())
                     .iat(timestamp.as_secs() as i64)
                     .exp((timestamp + Duration::from_secs(360)).as_secs() as i64)
-                    // TODO: so is this REQUIRED or OPTIONAL?
-                    .nonce(
-                        token_response
-                            .c_nonce
-                            .as_ref()
-                            .ok_or(anyhow::anyhow!("No c_nonce found."))?
-                            .clone(),
-                    )
+                    .nonce(c_nonce.as_ref().ok_or(anyhow::anyhow!("No c_nonce found."))?.clone())
                     .subject_syntax_type(self.default_subject_syntax_type.to_string())
                     .build()
                     .await?,
@@ -270,7 +263,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             let mut response = self
                 .client
                 .post(credential_issuer_metadata.credential_endpoint.clone())
-                .bearer_auth(token_response.access_token.clone())
+                .bearer_auth(access_token.clone())
                 .json(&credential_request)
                 .send()
                 .await?
@@ -296,6 +289,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                 Err(_) => {}
             }
             let response = response_value.unwrap();
+            println!("{response}");
             let c_nonce = response.get("c_nonce").unwrap().as_str().unwrap();
 
             println!("using c_nonce --> {c_nonce}");
@@ -327,7 +321,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             let Ok(response) = self
                 .client
                 .post(credential_issuer_metadata.credential_endpoint.clone())
-                .bearer_auth(token_response.access_token.clone())
+                .bearer_auth(access_token.clone())
                 .json(&credential_request)
                 .send()
                 .await?
@@ -354,22 +348,13 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             let response = self
                 .client
                 .post(credential_issuer_metadata.credential_endpoint.clone())
-                .bearer_auth(token_response.access_token.clone())
+                .bearer_auth(access_token.clone())
                 .json(&credential_request)
                 .send()
                 .await?;
             let text = response.text().await?;
             println!("{text}");
             serde_json::from_str(&text).map_err(|e| e.into())
-            // self.client
-            //     .post(credential_issuer_metadata.credential_endpoint.clone())
-            //     .bearer_auth(token_response.access_token.clone())
-            //     .json(&credential_request)
-            //     .send()
-            //     .await?
-            //     .json()
-            //     .await
-            //     .map_err(|e| e.into())
         }
     }
 
