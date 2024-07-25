@@ -13,6 +13,11 @@ pub enum TokenRequest {
         redirect_uri: Option<String>,
         client_id: Option<String>
     },
+    #[serde(rename = "refresh_token")]
+    TokenRefresh {
+        client_id: Option<String>,
+        refresh_token: String
+    },
     #[serde(rename = "urn:ietf:params:oauth:grant-type:pre-authorized_code")]
     PreAuthorizedCode {
         #[serde(rename = "pre-authorized_code")]
