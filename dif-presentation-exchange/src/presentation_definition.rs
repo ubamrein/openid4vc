@@ -31,6 +31,7 @@ pub struct InputDescriptor {
     pub(crate) id: String,
     pub(crate) name: Option<String>,
     pub(crate) purpose: Option<String>,
+    #[getset(get = "pub")]
     #[serde(default, deserialize_with = "deserialize_format")]
     pub(crate) format: Option<HashMap<ClaimFormatDesignation, Option<ClaimFormatProperty>>>,
     #[getset(get = "pub")]
