@@ -14,11 +14,36 @@ pub struct PresentationDefinition {
     // Feature.
     #[getset(get = "pub")]
     pub(crate) input_descriptors: Vec<InputDescriptor>,
+    #[getset(get = "pub")]
+    pub(crate) submission_requirements: Option<Vec<SubmissionRequirement>> ,
     pub(crate) name: Option<String>,
     pub(crate) purpose: Option<String>,
     #[serde(default, deserialize_with = "deserialize_format")]
     pub(crate) format: Option<HashMap<ClaimFormatDesignation, Option<ClaimFormatProperty>>>,
 }
+
+/// As specified in https://identity.foundation/presentation-exchange/#submission-requirement-feature.
+#[allow(dead_code)]
+#[skip_serializing_none]
+#[derive(Deserialize, Debug, Getters, PartialEq, Clone, Serialize)]
+pub struct SubmissionRequirement {
+    #[getset(get = "pub")]
+    name: String,
+    #[getset(get = "pub")]
+    rule: SubmissionRule,
+    #[getset(get = "pub")]
+    count: u32,
+    #[getset(get = "pub")]
+    from : String
+}
+#[allow(dead_code)]
+#[skip_serializing_none]
+#[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
+pub enum SubmissionRule {
+    #[serde(alias = "pick", alias = "PICK", alias = "Pick")]
+    Pick
+}
+
 
 /// As specified in https://identity.foundation/presentation-exchange/#input-descriptor-object.
 /// All input descriptors MUST be satisfied, unless otherwise specified by a Feature.
@@ -29,8 +54,12 @@ pub struct InputDescriptor {
     // Must not conflict with other input descriptors.
     #[getset(get = "pub")]
     pub(crate) id: String,
+    #[getset(get = "pub")]
     pub(crate) name: Option<String>,
+    #[getset(get = "pub")]
     pub(crate) purpose: Option<String>,
+    #[getset(get = "pub")]
+    pub(crate) group: Option<Vec<String>>,
     #[getset(get = "pub")]
     #[serde(default, deserialize_with = "deserialize_format")]
     pub(crate) format: Option<HashMap<ClaimFormatDesignation, Option<ClaimFormatProperty>>>,
