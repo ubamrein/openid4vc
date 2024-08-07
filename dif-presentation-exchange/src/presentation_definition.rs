@@ -16,7 +16,9 @@ pub struct PresentationDefinition {
     pub(crate) input_descriptors: Vec<InputDescriptor>,
     #[getset(get = "pub")]
     pub(crate) submission_requirements: Option<Vec<SubmissionRequirement>> ,
+    #[getset(get = "pub")]
     pub(crate) name: Option<String>,
+    #[getset(get = "pub")]
     pub(crate) purpose: Option<String>,
     #[serde(default, deserialize_with = "deserialize_format")]
     pub(crate) format: Option<HashMap<ClaimFormatDesignation, Option<ClaimFormatProperty>>>,
