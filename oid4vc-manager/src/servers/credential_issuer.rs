@@ -178,7 +178,8 @@ async fn credential<S: Storage<CFC>, CFC: CredentialFormatCollection>(
     let credential_request_proofs = match credential_request.proof {
         Proof(None) => vec![],
         Proof(Some(proof)) => vec![proof],
-        Proofs(proofs) => proofs,
+        Proofs(KeyProofsType::Jwt(proofs)) => proofs.map(|jwt| KeyProofType::Jwt(jwt)),
+        Proofs(KeyProofsType::Cwt(proofs)) => proofs.map(|cwt| KeyProofType::Cwt(cwt)),
     };
 
     let mut c_nonce = None;

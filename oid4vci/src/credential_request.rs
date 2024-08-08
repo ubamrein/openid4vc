@@ -1,7 +1,7 @@
 use crate::{
     credential_format_profiles::{CredentialFormatCollection, CredentialFormats, WithParameters},
     credential_issuer::credential_issuer_metadata::CredentialResponseEncryption,
-    proof::KeyProofType,
+    proof::{KeyProofType, KeyProofsType},
 };
 use jsonwebtoken::jwk::Jwk;
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,7 @@ pub enum OneOrManyKeyProofs {
     #[serde(rename = "proof")]
     Proof(Option<KeyProofType>),
     #[serde(rename = "proofs")]
-    Proofs(Vec<KeyProofType>),
+    Proofs(KeyProofsType),
 }
 
 use OneOrManyKeyProofs::{Proof, Proofs};
@@ -158,13 +158,12 @@ mod tests {
                   "degree": {}
                }
             },
-            "proofs": [{
-               "proof_type": "jwt",
-               "jwt": "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM"
-            }, {
-               "proof_type": "jwt",
-               "jwt": "aslkjaslkaslkjasdlkjasdlk...lasdkasdlkasdlkjaslk"
-            }]
+            "proofs": {
+               "jwt": [
+                  "eyJ0eXAiOiJvcGVuaWQ0dmNpL...Lb9zioZoipdP-jvh1WlA",
+                  "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM"
+                ],
+            },
         });
 
         let credential_request_jwt_vc_json: CredentialRequest = serde_json::from_value(jwt_vc_json.clone()).unwrap();
@@ -192,14 +191,10 @@ mod tests {
                     )
                         .into()
                 }),
-                proof: Proofs(vec![
-                    KeyProofType::Jwt {
-                        jwt: "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM".to_string()
-                    },
-                    KeyProofType::Jwt {
-                        jwt: "aslkjaslkaslkjasdlkjasdlk...lasdkasdlkasdlkjaslk".to_string()
-                    },
-                ]),
+                proof: Proofs(KeyProofsType::Jwt(vec![
+                      "eyJ0eXAiOiJvcGVuaWQ0dmNpL...Lb9zioZoipdP-jvh1WlA".to_string(),
+                      "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM".to_string(),
+                    ])),
                 credential_response_encryption: None
             }
         );

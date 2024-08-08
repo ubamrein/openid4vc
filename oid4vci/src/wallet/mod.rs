@@ -16,7 +16,7 @@ use crate::credential_request::{
 };
 use OneOrManyKeyProofs::{Proof, Proofs};
 use crate::credential_response::{BatchCredentialResponse, CredentialResponseType};
-use crate::proof::{KeyProofType, ProofType};
+use crate::proof::{KeyProofType, KeyProofsType, ProofType};
 use crate::wallet::content_encryption::ContentDecryptor;
 use crate::{credential_response::CredentialResponse, token_request::TokenRequest, token_response::TokenResponse};
 use anyhow::{bail, Result};
@@ -240,7 +240,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         };
         let credential_request = CredentialRequest {
             credential_format: credential_format.clone(),
-            proof: Proofs(
+            proof: Proofs(KeyProofsType::Jwt(
                 join_all(
                     self.subjects.iter().map(|subject|{
                     KeyProofType::builder()
@@ -258,7 +258,16 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                 .await
                 .into_iter()
                 .collect::<Result<Vec<_>,_>>()?
-            ),
+                .into_iter() // convert from Vec<KeyProofType> to Vec<String>
+                .map(|kpt| {
+                    if let KeyProofType::Jwt{jwt} = kpt {
+                        jwt
+                    } else {
+                        panic!();
+                    }
+                })
+                .collect()
+            )),
             credential_response_encryption: credential_response_encryption.clone(),
         };
 
