@@ -11,8 +11,9 @@ use crate::credential_issuer::{
 use crate::credential_offer::{AuthorizationRequestReference, CredentialOfferParameters};
 use crate::credential_request::{
     BatchCredentialRequest, CredentialRequest, CredentialResponseEncryptionKey,
-    CredentialResponseEncryptionSpecification,
+    CredentialResponseEncryptionSpecification, OneOrManyKeyProofs,
 };
+use OneOrManyKeyProofs::{Proof, Proofs};
 use crate::credential_response::{BatchCredentialResponse, CredentialResponseType};
 use crate::proof::{KeyProofType, ProofType};
 use crate::wallet::content_encryption::ContentDecryptor;
@@ -232,7 +233,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         let timestamp = SystemTime::now();
         let timestamp = timestamp.duration_since(UNIX_EPOCH).expect("Time went backwards");
         let proof = if c_nonce.is_some() {
-            Some(
+            Proof(Some(
                 KeyProofType::builder()
                     .proof_type(ProofType::Jwt)
                     .signer(self.subject.clone())
@@ -244,9 +245,9 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                     .subject_syntax_type(self.default_subject_syntax_type.to_string())
                     .build()
                     .await?,
-            )
+            ))
         } else {
-            None
+            Proof(None)
         };
         let credential_response_encryption = if let Some(content_decryptor) = content_decryptor.as_ref() {
             Some(content_decryptor.encryption_specification())
@@ -294,7 +295,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
 
             println!("using c_nonce --> {c_nonce}");
 
-            let proof = Some(
+            let proof = Proof(Some(
                 KeyProofType::builder()
                     .proof_type(ProofType::Jwt)
                     .signer(self.subject.clone())
@@ -311,7 +312,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                     .subject_syntax_type(self.default_subject_syntax_type.to_string())
                     .build()
                     .await?,
-            );
+            ));
 
             let credential_request = CredentialRequest {
                 credential_format: credential_format.clone(),
@@ -380,7 +381,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             enc: "A128CBC-HS256".to_string(),
             alg: "RSA-OAEP-256".to_string(),
         };
-        let proof = Some(
+        let proof = Proof(Some(
             KeyProofType::builder()
                 .proof_type(ProofType::Jwt)
                 .signer(self.subject.clone())
@@ -403,7 +404,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                 .subject_syntax_type(self.default_subject_syntax_type.to_string())
                 .build()
                 .await?,
-        );
+        ));
 
         let batch_credential_request = BatchCredentialRequest {
             credential_requests: credential_formats

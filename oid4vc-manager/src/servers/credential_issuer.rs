@@ -174,10 +174,11 @@ async fn credential<S: Storage<CFC>, CFC: CredentialFormatCollection>(
     Json(credential_request): Json<CredentialRequest<CFC>>,
 ) -> impl IntoResponse {
     // TODO: The bunch of unwrap's here should be replaced with error responses as described here: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-13.html#name-credential-error-response
+    // XXX(matzf): ignores all but the first proof of the pseudo-batch request. Should do batch issuance instead...
     let proof = credential_issuer_manager
         .credential_issuer
         .validate_proof(
-            credential_request.proof.unwrap(),
+            credential_request.proof.first().unwrap().clone(),
             Validator::Subject(credential_issuer_manager.credential_issuer.subject.clone()),
         )
         .await
@@ -215,7 +216,7 @@ async fn batch_credential<S: Storage<CFC>, CFC: CredentialFormatCollection>(
         let proof = credential_issuer_manager
             .credential_issuer
             .validate_proof(
-                credential_request.proof.unwrap(),
+                credential_request.proof.first().unwrap().clone(),
                 Validator::Subject(credential_issuer_manager.credential_issuer.subject.clone()),
             )
             .await

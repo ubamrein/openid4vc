@@ -15,6 +15,8 @@ pub struct CredentialResponse {
 #[skip_serializing_none]
 #[derive(Serialize, Debug, PartialEq, Deserialize)]
 pub struct BatchCredentialResponse {
+    #[serde(alias="credentials")]
+    #[serde(alias="credential")]
     pub credential_responses: Vec<CredentialResponseType>,
     pub c_nonce: Option<String>,
     pub c_nonce_expires_in: Option<u64>,
