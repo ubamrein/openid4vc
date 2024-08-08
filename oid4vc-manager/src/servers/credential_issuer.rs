@@ -12,11 +12,7 @@ use axum::{
 use axum_auth::AuthBearer;
 use oid4vc_core::Validator;
 use oid4vci::{
-    authorization_request::AuthorizationRequest,
-    credential_format_profiles::CredentialFormatCollection,
-    credential_request::{BatchCredentialRequest, CredentialRequest, OneOrManyKeyProofs},
-    credential_response::{BatchCredentialResponse, CredentialResponse, CredentialResponseType},
-    token_request::TokenRequest,
+    authorization_request::AuthorizationRequest, credential_format_profiles::CredentialFormatCollection, credential_request::{BatchCredentialRequest, CredentialRequest, OneOrManyKeyProofs}, credential_response::{BatchCredentialResponse, CredentialResponse, CredentialResponseType}, proof::KeyProofsType, token_request::TokenRequest, KeyProofType
 };
 use OneOrManyKeyProofs::{Proof, Proofs};
 use serde::de::DeserializeOwned;
@@ -178,8 +174,8 @@ async fn credential<S: Storage<CFC>, CFC: CredentialFormatCollection>(
     let credential_request_proofs = match credential_request.proof {
         Proof(None) => vec![],
         Proof(Some(proof)) => vec![proof],
-        Proofs(KeyProofsType::Jwt(proofs)) => proofs.map(|jwt| KeyProofType::Jwt(jwt)),
-        Proofs(KeyProofsType::Cwt(proofs)) => proofs.map(|cwt| KeyProofType::Cwt(cwt)),
+        Proofs(KeyProofsType::Jwt(proofs)) => proofs.into_iter().map(|jwt| KeyProofType::Jwt { jwt }).collect(),
+        Proofs(KeyProofsType::Cwt(proofs)) => proofs.into_iter().map(|cwt| KeyProofType::Cwt { cwt }).collect(),
     };
 
     let mut c_nonce = None;
