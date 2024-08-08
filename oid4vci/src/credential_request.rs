@@ -5,21 +5,19 @@ use crate::{
 };
 use jsonwebtoken::jwk::Jwk;
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, OneOrMany, skip_serializing_none};
-use serde_with::formats::PreferOne;
+use serde_with::skip_serializing_none;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq,Eq,Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub enum OneOrManyKeyProofs {
-    #[serde(rename="proof")]
+    #[serde(rename = "proof")]
     Proof(Option<KeyProofType>),
-    #[serde(rename="proofs")]
+    #[serde(rename = "proofs")]
     Proofs(Vec<KeyProofType>),
 }
 
 use OneOrManyKeyProofs::{Proof, Proofs};
 
 /// Credential Request as described here: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-13.html#name-credential-request
-#[serde_as]
 #[skip_serializing_none]
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct CredentialRequest<CFC = CredentialFormats<WithParameters>>
@@ -144,7 +142,7 @@ mod tests {
             jwt_vc_json
         );
     }
-    
+
     #[test]
     fn test_credential_request_many_serde_jwt_vc_json() {
         let jwt_vc_json = json!({
@@ -195,8 +193,12 @@ mod tests {
                         .into()
                 }),
                 proof: Proofs(vec![
-                    KeyProofType::Jwt { jwt: "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM".to_string() },
-                    KeyProofType::Jwt { jwt: "aslkjaslkaslkjasdlkjasdlk...lasdkasdlkasdlkjaslk".to_string() },
+                    KeyProofType::Jwt {
+                        jwt: "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM".to_string()
+                    },
+                    KeyProofType::Jwt {
+                        jwt: "aslkjaslkaslkjasdlkjasdlk...lasdkasdlkasdlkjaslk".to_string()
+                    },
                 ]),
                 credential_response_encryption: None
             }

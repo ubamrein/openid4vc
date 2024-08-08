@@ -1,5 +1,6 @@
 use std::ops::Add;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use futures::future::join_all;
 
 use crate::authorization_details::AuthorizationDetailsObject;
 use crate::authorization_request::{AuthorizationRequest, PushedAuthorizationRequest};
@@ -42,7 +43,7 @@ pub struct Wallet<CFC = CredentialFormats<WithParameters>>
 where
     CFC: CredentialFormatCollection,
 {
-    pub subject: SigningSubject,
+    pub subjects: Vec<SigningSubject>,
     pub default_subject_syntax_type: SubjectSyntaxType,
     pub client: ClientWithMiddleware,
     phantom: std::marker::PhantomData<CFC>,
@@ -50,7 +51,7 @@ where
 
 impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
     pub fn new(
-        subject: SigningSubject,
+        subjects: Vec<SigningSubject>,
         default_subject_syntax_type: impl TryInto<SubjectSyntaxType>,
     ) -> anyhow::Result<Self> {
         let retry_policy = ExponentialBackoff::builder().build_with_max_retries(5);
@@ -58,7 +59,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .with(RetryTransientMiddleware::new_with_policy(retry_policy))
             .build();
         Ok(Self {
-            subject,
+            subjects,
             default_subject_syntax_type: default_subject_syntax_type
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Invalid did method"))?,
@@ -168,7 +169,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .json(&AuthorizationRequest {
                 response_type: "code".to_string(),
                 client_id: self
-                    .subject
+                    .subjects.first().unwrap()
                     .identifier(&self.default_subject_syntax_type.to_string())
                     .await?,
                 redirect_uri: None,
@@ -229,26 +230,9 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         content_decryptor: Option<Box<dyn ContentDecryptor>>,
         client_id: &str,
     ) -> Result<CredentialResponse> {
-        let retry_with_proof = c_nonce.is_none();
+        let c_nonce = c_nonce.as_ref().ok_or(anyhow::anyhow!("No c_nonce found."))?; // XXX
         let timestamp = SystemTime::now();
         let timestamp = timestamp.duration_since(UNIX_EPOCH).expect("Time went backwards");
-        let proof = if c_nonce.is_some() {
-            Proof(Some(
-                KeyProofType::builder()
-                    .proof_type(ProofType::Jwt)
-                    .signer(self.subject.clone())
-                    .iss(client_id)
-                    .aud(credential_issuer_metadata.credential_issuer.clone())
-                    .iat(timestamp.as_secs() as i64)
-                    .exp((timestamp + Duration::from_secs(360)).as_secs() as i64)
-                    .nonce(c_nonce.as_ref().ok_or(anyhow::anyhow!("No c_nonce found."))?.clone())
-                    .subject_syntax_type(self.default_subject_syntax_type.to_string())
-                    .build()
-                    .await?,
-            ))
-        } else {
-            Proof(None)
-        };
         let credential_response_encryption = if let Some(content_decryptor) = content_decryptor.as_ref() {
             Some(content_decryptor.encryption_specification())
         } else {
@@ -256,107 +240,38 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         };
         let credential_request = CredentialRequest {
             credential_format: credential_format.clone(),
-            proof,
+            proof: Proofs(
+                join_all(
+                    self.subjects.iter().map(|subject|{
+                    KeyProofType::builder()
+                        .proof_type(ProofType::Jwt)
+                        .signer(subject.clone())
+                        .iss(client_id)
+                        .aud(credential_issuer_metadata.credential_issuer.clone())
+                        .iat(timestamp.as_secs() as i64)
+                        .exp((timestamp + Duration::from_secs(360)).as_secs() as i64)
+                        .nonce(c_nonce.clone())
+                        .subject_syntax_type(self.default_subject_syntax_type.to_string())
+                        .build()
+                    })
+                )
+                .await
+                .into_iter()
+                .collect::<Result<Vec<_>,_>>()?
+            ),
             credential_response_encryption: credential_response_encryption.clone(),
         };
 
-        if retry_with_proof {
-            let mut response = self
-                .client
-                .post(credential_issuer_metadata.credential_endpoint.clone())
-                .bearer_auth(access_token.clone())
-                .json(&credential_request)
-                .send()
-                .await?
-                .text()
-                .await?;
-            let response_value = serde_json::from_str::<Value>(&response);
-            // it is no json, so try to decrypt
-            if response_value.is_err() {
-                if let Some(content_decryptor) = content_decryptor.as_ref() {
-                    let Ok(decrypted_response) = content_decryptor.decrypt(&response) else {
-                        bail!("Could not decrypt content");
-                    };
-                    let Ok(decrypted_json) = std::str::from_utf8(&decrypted_response) else {
-                        bail!("Decrypted content is not valid utf8");
-                    };
-                    response = decrypted_json.to_string();
-                } else {
-                    bail!("Content is probably encrypted");
-                }
-            }
-            match serde_json::from_str::<CredentialResponse>(&response) {
-                Ok(resp) => return Ok(resp),
-                Err(_) => {}
-            }
-            let response = response_value.unwrap();
-            println!("{response}");
-            let c_nonce = response.get("c_nonce").unwrap().as_str().unwrap();
-
-            println!("using c_nonce --> {c_nonce}");
-
-            let proof = Proof(Some(
-                KeyProofType::builder()
-                    .proof_type(ProofType::Jwt)
-                    .signer(self.subject.clone())
-                    .iss(
-                        self.subject
-                            .identifier(&self.default_subject_syntax_type.to_string())
-                            .await?,
-                    )
-                    .aud(credential_issuer_metadata.credential_issuer)
-                    .iat(1571324800)
-                    .exp(9999999999i64)
-                    // TODO: so is this REQUIRED or OPTIONAL?
-                    .nonce(c_nonce.to_string())
-                    .subject_syntax_type(self.default_subject_syntax_type.to_string())
-                    .build()
-                    .await?,
-            ));
-
-            let credential_request = CredentialRequest {
-                credential_format: credential_format.clone(),
-                proof,
-                credential_response_encryption: credential_response_encryption.clone(),
-            };
-            let Ok(response) = self
-                .client
-                .post(credential_issuer_metadata.credential_endpoint.clone())
-                .bearer_auth(access_token.clone())
-                .json(&credential_request)
-                .send()
-                .await?
-                .text()
-                .await
-            else {
-                bail!("failure retrieveing stuff");
-            };
-
-            match serde_json::from_str::<CredentialResponse>(&response) {
-                Ok(resp) => Ok(resp),
-                Err(_) if content_decryptor.is_some() => {
-                    // let's try to decrypt (we checked for is_some so this is valid, workaround until we have let guards)
-                    let content_decryptor = content_decryptor.as_ref().unwrap();
-                    let decyrpted_content = match content_decryptor.decrypt(&response) {
-                        Ok(content) => content,
-                        Err(e) => return Err(anyhow::anyhow!(e)),
-                    };
-                    serde_json::from_slice(&decyrpted_content).map_err(|e| anyhow::anyhow!(e))
-                }
-                _ => bail!("Content is probably encrypted"),
-            }
-        } else {
-            let response = self
-                .client
-                .post(credential_issuer_metadata.credential_endpoint.clone())
-                .bearer_auth(access_token.clone())
-                .json(&credential_request)
-                .send()
-                .await?;
-            let text = response.text().await?;
-            println!("{text}");
-            serde_json::from_str(&text).map_err(|e| e.into())
-        }
+        let response = self
+            .client
+            .post(credential_issuer_metadata.credential_endpoint.clone())
+            .bearer_auth(access_token.clone())
+            .json(&credential_request)
+            .send()
+            .await?;
+        let text = response.text().await?;
+        println!("{text}");
+        serde_json::from_str(&text).map_err(|e| e.into())
     }
 
     pub async fn get_batch_credential(
@@ -384,9 +299,10 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         let proof = Proof(Some(
             KeyProofType::builder()
                 .proof_type(ProofType::Jwt)
-                .signer(self.subject.clone())
+                .signer(self.subjects.first().unwrap().clone()) // XXX only handles one subject!
                 .iss(
-                    self.subject
+                    self.subjects
+                        .first().unwrap()
                         .identifier(&self.default_subject_syntax_type.to_string())
                         .await?,
                 )
