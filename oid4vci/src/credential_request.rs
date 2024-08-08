@@ -1,11 +1,21 @@
 use crate::{
     credential_format_profiles::{CredentialFormatCollection, CredentialFormats, WithParameters},
     credential_issuer::credential_issuer_metadata::CredentialResponseEncryption,
-    proof::KeyProofType,
+    proof::{KeyProofType, KeyProofsType},
 };
 use jsonwebtoken::jwk::Jwk;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
+pub enum OneOrManyKeyProofs {
+    #[serde(rename = "proof")]
+    Proof(Option<KeyProofType>),
+    #[serde(rename = "proofs")]
+    Proofs(KeyProofsType),
+}
+
+use OneOrManyKeyProofs::{Proof, Proofs};
 
 /// Credential Request as described here: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-13.html#name-credential-request
 #[skip_serializing_none]
@@ -16,7 +26,8 @@ where
 {
     #[serde(flatten)]
     pub credential_format: CFC,
-    pub proof: Option<KeyProofType>,
+    #[serde(flatten)]
+    pub proof: OneOrManyKeyProofs,
     // TODO: add `credential_identifier` field when support for Authorization Code Flow is added.
     pub credential_response_encryption: Option<CredentialResponseEncryptionSpecification>,
 }
@@ -118,11 +129,74 @@ mod tests {
                     )
                         .into()
                 }),
-                proof: Some(KeyProofType::Jwt {
+                proof: Proof(Some(KeyProofType::Jwt {
                     jwt: "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM".to_string()
-                }),
+                })),
                 credential_response_encryption: None
             },
+        );
+
+        // Assert that the `CredentialRequest` can be serialized back into the original json Value.
+        assert_eq!(
+            serde_json::to_value(credential_request_jwt_vc_json).unwrap(),
+            jwt_vc_json
+        );
+    }
+
+    #[test]
+    fn test_credential_request_many_serde_jwt_vc_json() {
+        let jwt_vc_json = json!({
+            "format": "jwt_vc_json",
+            "credential_definition": {
+               "type": [
+                  "VerifiableCredential",
+                  "UniversityDegreeCredential"
+               ],
+               "credentialSubject": {
+                  "given_name": {},
+                  "family_name": {},
+                  "degree": {}
+               }
+            },
+            "proofs": {
+               "jwt": [
+                  "eyJ0eXAiOiJvcGVuaWQ0dmNpL...Lb9zioZoipdP-jvh1WlA",
+                  "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM"
+                ],
+            },
+        });
+
+        let credential_request_jwt_vc_json: CredentialRequest = serde_json::from_value(jwt_vc_json.clone()).unwrap();
+
+        // Assert that the json Value is deserialized into the correct type.
+        assert_eq!(
+            credential_request_jwt_vc_json,
+            CredentialRequest {
+                credential_format: CredentialFormats::JwtVcJson(Parameters {
+                    parameters: (
+                        CredentialDefinition {
+                            type_: StringOrVec::Many(vec![
+                                "VerifiableCredential".to_string(),
+                                "UniversityDegreeCredential".to_string()
+                            ]),
+                            credential_subject: CredentialSubject {
+                                credential_subject: Some(json!({
+                                    "given_name": {},
+                                    "family_name": {},
+                                    "degree": {}
+                                }))
+                            },
+                        },
+                        None
+                    )
+                        .into()
+                }),
+                proof: Proofs(KeyProofsType::Jwt(vec![
+                      "eyJ0eXAiOiJvcGVuaWQ0dmNpL...Lb9zioZoipdP-jvh1WlA".to_string(),
+                      "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM".to_string(),
+                    ])),
+                credential_response_encryption: None
+            }
         );
 
         // Assert that the `CredentialRequest` can be serialized back into the original json Value.
@@ -176,9 +250,9 @@ mod tests {
                     )
                         .into()
                 }),
-                proof: Some(KeyProofType::Jwt {
+                proof: Proof(Some(KeyProofType::Jwt {
                     jwt: "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM".to_string()
-                }),
+                })),
                 credential_response_encryption: None
             },
         );
@@ -211,9 +285,9 @@ mod tests {
                     )
                         .into()
                 }),
-                proof: Some(KeyProofType::Jwt {
+                proof: Proof(Some(KeyProofType::Jwt {
                     jwt: "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM".to_string()
-                }),
+                })),
                 credential_response_encryption: None
             },
             json_example::<CredentialRequest>("tests/examples/credential_request_iso_mdl_with_claims.json")
@@ -244,9 +318,9 @@ mod tests {
                     )
                         .into()
                 }),
-                proof: Some(KeyProofType::Jwt {
+                proof: Proof(Some(KeyProofType::Jwt {
                     jwt: "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM".to_string()
-                }),
+                })),
                 credential_response_encryption: None
             },
             json_example::<CredentialRequest>("tests/examples/credential_request_jwt_vc_json-ld.json")
@@ -273,9 +347,9 @@ mod tests {
                     )
                         .into()
                 }),
-                proof: Some(KeyProofType::Jwt {
+                proof: Proof(Some(KeyProofType::Jwt {
                     jwt: "eyJraWQiOiJkaWQ6ZXhhbXBsZTplYmZlYjFmNzEyZWJjNmYxYzI3NmUxMmVjMjEva2V5cy8xIiwiYWxnIjoiRVMyNTYiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJzNkJoZFJrcXQzIiwiYXVkIjoiaHR0cHM6Ly9zZXJ2ZXIuZXhhbXBsZS5jb20iLCJpYXQiOiIyMDE4LTA5LTE0VDIxOjE5OjEwWiIsIm5vbmNlIjoidFppZ25zbkZicCJ9.ewdkIkPV50iOeBUqMXCC_aZKPxgihac0aW9EkL1nOzM".to_string()
-                }),
+                })),
                 credential_response_encryption: None
             },
             json_example::<CredentialRequest>(
@@ -308,9 +382,9 @@ mod tests {
                     )
                         .into()
                 }),
-                proof: Some(KeyProofType::Jwt {
+                proof: Proof(Some(KeyProofType::Jwt {
                     jwt: "eyJraWQiOiJkaWQ6ZXhhbXBsZ...KPxgihac0aW9EkL1nOzM".to_string()
-                }),
+                })),
                 credential_response_encryption: None
             },
             json_example::<CredentialRequest>("tests/examples/credential_request_ldp_vc.json")

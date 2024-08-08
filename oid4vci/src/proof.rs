@@ -22,6 +22,14 @@ impl KeyProofType {
     }
 }
 
+// Key Proof_s_ type for multiple proof-of-posessions in the same credential request
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum KeyProofsType {
+    Jwt(Vec<String>),
+    Cwt(Vec<String>),
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct KeyProofMetadata {
     pub proof_signing_alg_values_supported: Vec<String>,

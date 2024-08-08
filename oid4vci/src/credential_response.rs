@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
-use serde_with::skip_serializing_none;
+use serde_with::formats::PreferMany;
+use serde_with::{serde_as, skip_serializing_none, OneOrMany};
 
 /// Credential Response as described here: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-13.html#name-credential-response
+#[serde_as]
 #[skip_serializing_none]
 #[derive(Serialize, Debug, PartialEq, Deserialize, Clone)]
 pub struct CredentialResponse {
@@ -28,6 +30,7 @@ pub enum CredentialResponseType {
         transaction_id: String,
     },
     Immediate {
+        #[serde(alias = "credentials")] // XXX Accepts "credential" with multiple. Meh, good enough...
         credential: serde_json::Value,
         notification_id: Option<String>,
     },
@@ -52,6 +55,29 @@ mod tests {
             serialized,
             json!({
                 "transaction_id": "123",
+                "c_nonce": "456",
+                "c_nonce_expires_in": 789
+            })
+        );
+        let deserialized: CredentialResponse = serde_json::from_value(serialized).unwrap();
+        assert_eq!(deserialized, credential_response);
+    }
+
+    #[test]
+    fn test_credential_response_many() {
+        let credential_response = CredentialResponse {
+            credential: CredentialResponseType::Immediate {
+                credential: json!(["123".to_string(), "abc".to_string()]),
+                notification_id: None,
+            },
+            c_nonce: Some("456".to_string()),
+            c_nonce_expires_in: Some(789),
+        };
+        let serialized = serde_json::to_value(&credential_response).unwrap();
+        assert_eq!(
+            serialized,
+            json!({
+                "credential": ["123", "abc"], // XXX or credential_s_
                 "c_nonce": "456",
                 "c_nonce_expires_in": 789
             })
