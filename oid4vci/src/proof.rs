@@ -60,6 +60,36 @@ pub struct ProofOfPossession {
 }
 
 impl ProofBuilder {
+    pub async fn build_no_sign(self) -> anyhow::Result<KeyProofType> {
+        anyhow::ensure!(self.rfc7519_claims.aud.is_some(), "aud claim is required");
+        anyhow::ensure!(self.rfc7519_claims.iat.is_some(), "iat claim is required");
+        anyhow::ensure!(self.nonce.is_some(), "nonce claim is required");
+
+        let subject_syntax_type = self
+            .subject_syntax_type
+            .ok_or(anyhow::anyhow!("subject_syntax_type is required"))?;
+
+        match self.proof_type {
+            Some(ProofType::Jwt) => Ok(KeyProofType::Jwt {
+                jwt: jwt::encode_body(
+                    self.signer.as_ref().ok_or(anyhow::anyhow!("No subject found"))?.clone(),
+                    self.signer
+                        .ok_or(anyhow::anyhow!("No subject found"))?
+                        .jwt_header()
+                        .await,
+                    ProofOfPossession {
+                        rfc7519_claims: self.rfc7519_claims,
+                        nonce: self.nonce.ok_or(anyhow::anyhow!("No nonce found"))?,
+                    },
+                    &subject_syntax_type,
+                    false,
+                )
+                .await?,
+            }),
+            Some(ProofType::Cwt) => todo!(),
+            None => Err(anyhow::anyhow!("proof_type is required")),
+        }
+    }
     pub async fn build(self) -> anyhow::Result<KeyProofType> {
         anyhow::ensure!(self.rfc7519_claims.aud.is_some(), "aud claim is required");
         anyhow::ensure!(self.rfc7519_claims.iat.is_some(), "iat claim is required");
@@ -68,18 +98,21 @@ impl ProofBuilder {
         let subject_syntax_type = self
             .subject_syntax_type
             .ok_or(anyhow::anyhow!("subject_syntax_type is required"))?;
-        
+
         match self.proof_type {
             Some(ProofType::Jwt) => Ok(KeyProofType::Jwt {
                 jwt: jwt::encode(
                     self.signer.as_ref().ok_or(anyhow::anyhow!("No subject found"))?.clone(),
-                    self.signer.ok_or(anyhow::anyhow!("No subject found"))?.jwt_header().await,
+                    self.signer
+                        .ok_or(anyhow::anyhow!("No subject found"))?
+                        .jwt_header()
+                        .await,
                     ProofOfPossession {
                         rfc7519_claims: self.rfc7519_claims,
                         nonce: self.nonce.ok_or(anyhow::anyhow!("No nonce found"))?,
                     },
                     &subject_syntax_type,
-                    false
+                    false,
                 )
                 .await?,
             }),

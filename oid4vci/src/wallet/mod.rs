@@ -218,44 +218,19 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .map_err(|e| e.into())
     }
 
-    pub async fn get_credential(
+    pub async fn get_credential_with_proofs(
         &self,
         credential_issuer_metadata: CredentialIssuerMetadata<CFC>,
         access_token: String,
-        c_nonce: Option<String>,
         credential_format: CFC,
         content_decryptor: Option<Box<dyn ContentDecryptor>>,
-        client_id: &str,
+        proofs: Vec<String>,
     ) -> Result<CredentialResponse> {
-        let c_nonce = c_nonce.as_ref().ok_or(anyhow::anyhow!("No c_nonce found."))?; // XXX
-        let timestamp = SystemTime::now();
-        let timestamp = timestamp.duration_since(UNIX_EPOCH).expect("Time went backwards");
         let credential_response_encryption = if let Some(content_decryptor) = content_decryptor.as_ref() {
             Some(content_decryptor.encryption_specification())
         } else {
             None
         };
-
-        let mut proofs = vec![];
-        for subject in &self.subjects {
-            let Ok(kpt) = KeyProofType::builder()
-                .proof_type(ProofType::Jwt)
-                .signer(subject.clone())
-                .iss(client_id)
-                .aud(credential_issuer_metadata.credential_issuer.clone())
-                .iat(timestamp.as_secs() as i64)
-                .exp((timestamp + Duration::from_secs(360)).as_secs() as i64)
-                .nonce(c_nonce.clone())
-                .subject_syntax_type(self.default_subject_syntax_type.to_string())
-                .build()
-                .await
-            else {
-                continue;
-            };      
-            if let KeyProofType::Jwt { jwt } = kpt {
-                proofs.push(jwt);
-            }
-        }
 
         let credential_request = CredentialRequest {
             credential_format: credential_format.clone(),
@@ -273,6 +248,76 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         let text = response.text().await?;
         println!("{text}");
         serde_json::from_str(&text).map_err(|e| e.into())
+    }
+
+    pub async fn get_proof_body(&self, c_nonce: Option<String>,  client_id: &str) -> Result<Vec<String>> {
+        let nonce = c_nonce.as_ref().ok_or(anyhow::anyhow!("No c_nonce found."))?; // XXX
+        let timestamp = SystemTime::now();
+        let timestamp = timestamp.duration_since(UNIX_EPOCH).expect("Time went backwards");
+        let mut proofs = vec![];
+        for subject in &self.subjects {
+            let Ok(kpt) = KeyProofType::builder()
+                .proof_type(ProofType::Jwt)
+                .signer(subject.clone())
+                .iss(client_id)
+                .aud(credential_issuer_metadata.credential_issuer.clone())
+                .iat(timestamp.as_secs() as i64)
+                .exp((timestamp + Duration::from_secs(360)).as_secs() as i64)
+                .nonce(nonce.clone())
+                .subject_syntax_type(self.default_subject_syntax_type.to_string())
+                .build_no_sign()
+                .await
+            else {
+                continue;
+            };
+            if let KeyProofType::Jwt { jwt } = kpt {
+                proofs.push(jwt);
+            }
+        }
+        Ok(proofs)
+    }
+
+    pub async fn get_credential(
+        &self,
+        credential_issuer_metadata: CredentialIssuerMetadata<CFC>,
+        access_token: String,
+        c_nonce: Option<String>,
+        credential_format: CFC,
+        content_decryptor: Option<Box<dyn ContentDecryptor>>,
+        client_id: &str,
+    ) -> Result<CredentialResponse> {
+        let nonce = c_nonce.as_ref().ok_or(anyhow::anyhow!("No c_nonce found."))?; // XXX
+        let timestamp = SystemTime::now();
+        let timestamp = timestamp.duration_since(UNIX_EPOCH).expect("Time went backwards");
+
+        let mut proofs = vec![];
+        for subject in &self.subjects {
+            let Ok(kpt) = KeyProofType::builder()
+                .proof_type(ProofType::Jwt)
+                .signer(subject.clone())
+                .iss(client_id)
+                .aud(credential_issuer_metadata.credential_issuer.clone())
+                .iat(timestamp.as_secs() as i64)
+                .exp((timestamp + Duration::from_secs(360)).as_secs() as i64)
+                .nonce(nonce.clone())
+                .subject_syntax_type(self.default_subject_syntax_type.to_string())
+                .build()
+                .await
+            else {
+                continue;
+            };
+            if let KeyProofType::Jwt { jwt } = kpt {
+                proofs.push(jwt);
+            }
+        }
+        self.get_credential_with_proofs(
+            credential_issuer_metadata,
+            access_token,
+            credential_format,
+            content_decryptor,
+            proofs,
+        )
+        .await
     }
 
     pub async fn get_batch_credential(
