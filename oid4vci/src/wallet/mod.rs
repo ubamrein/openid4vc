@@ -250,7 +250,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         serde_json::from_str(&text).map_err(|e| e.into())
     }
 
-    pub async fn get_proof_body(&self, c_nonce: Option<String>,  client_id: &str) -> Result<Vec<String>> {
+    pub async fn get_proof_body(&self, credential_issuer_metadata: CredentialIssuerMetadata<CFC>, c_nonce: Option<String>,  client_id: &str) -> Result<Vec<String>> {
         let nonce = c_nonce.as_ref().ok_or(anyhow::anyhow!("No c_nonce found."))?; // XXX
         let timestamp = SystemTime::now();
         let timestamp = timestamp.duration_since(UNIX_EPOCH).expect("Time went backwards");
