@@ -1,6 +1,5 @@
 use std::ops::Add;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use futures::future::join_all;
 
 use crate::authorization_details::AuthorizationDetailsObject;
 use crate::authorization_request::{AuthorizationRequest, PushedAuthorizationRequest};
@@ -14,7 +13,6 @@ use crate::credential_request::{
     BatchCredentialRequest, CredentialRequest, CredentialResponseEncryptionKey,
     CredentialResponseEncryptionSpecification, OneOrManyKeyProofs,
 };
-use OneOrManyKeyProofs::{Proof, Proofs};
 use crate::credential_response::{BatchCredentialResponse, CredentialResponseType};
 use crate::proof::{KeyProofType, KeyProofsType, ProofType};
 use crate::wallet::content_encryption::ContentDecryptor;
@@ -24,18 +22,15 @@ use base64::Engine;
 use jsonwebtoken::jwk::{CommonParameters, Jwk, RSAKeyParameters};
 use libaes::Cipher;
 use oid4vc_core::authentication::subject::SigningSubject;
-use oid4vc_core::jwt::{base64_url_decode, base64_url_encode};
 use oid4vc_core::SubjectSyntaxType;
 use reqwest::Url;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::policies::ExponentialBackoff;
 use reqwest_retry::RetryTransientMiddleware;
 use rsa::rand_core::OsRng;
-use rsa::traits::PublicKeyParts;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
-use sha1::Sha1;
-use sha2::Sha256;
+use OneOrManyKeyProofs::{Proof, Proofs};
 
 pub mod content_encryption;
 
@@ -169,7 +164,9 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .json(&AuthorizationRequest {
                 response_type: "code".to_string(),
                 client_id: self
-                    .subjects.first().unwrap()
+                    .subjects
+                    .first()
+                    .unwrap()
                     .identifier(&self.default_subject_syntax_type.to_string())
                     .await?,
                 redirect_uri: None,
@@ -238,36 +235,31 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         } else {
             None
         };
+
+        let mut proofs = vec![];
+        for subject in &self.subjects {
+            let Ok(kpt) = KeyProofType::builder()
+                .proof_type(ProofType::Jwt)
+                .signer(subject.clone())
+                .iss(client_id)
+                .aud(credential_issuer_metadata.credential_issuer.clone())
+                .iat(timestamp.as_secs() as i64)
+                .exp((timestamp + Duration::from_secs(360)).as_secs() as i64)
+                .nonce(c_nonce.clone())
+                .subject_syntax_type(self.default_subject_syntax_type.to_string())
+                .build()
+                .await
+            else {
+                continue;
+            };      
+            if let KeyProofType::Jwt { jwt } = kpt {
+                proofs.push(jwt);
+            }
+        }
+
         let credential_request = CredentialRequest {
             credential_format: credential_format.clone(),
-            proof: Proofs(KeyProofsType::Jwt(
-                join_all(
-                    self.subjects.iter().map(|subject|{
-                    KeyProofType::builder()
-                        .proof_type(ProofType::Jwt)
-                        .signer(subject.clone())
-                        .iss(client_id)
-                        .aud(credential_issuer_metadata.credential_issuer.clone())
-                        .iat(timestamp.as_secs() as i64)
-                        .exp((timestamp + Duration::from_secs(360)).as_secs() as i64)
-                        .nonce(c_nonce.clone())
-                        .subject_syntax_type(self.default_subject_syntax_type.to_string())
-                        .build()
-                    })
-                )
-                .await
-                .into_iter()
-                .collect::<Result<Vec<_>,_>>()?
-                .into_iter() // convert from Vec<KeyProofType> to Vec<String>
-                .map(|kpt| {
-                    if let KeyProofType::Jwt{jwt} = kpt {
-                        jwt
-                    } else {
-                        panic!();
-                    }
-                })
-                .collect()
-            )),
+            proof: Proofs(KeyProofsType::Jwt(proofs)),
             credential_response_encryption: credential_response_encryption.clone(),
         };
 
@@ -311,7 +303,8 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                 .signer(self.subjects.first().unwrap().clone()) // XXX only handles one subject!
                 .iss(
                     self.subjects
-                        .first().unwrap()
+                        .first()
+                        .unwrap()
                         .identifier(&self.default_subject_syntax_type.to_string())
                         .await?,
                 )
