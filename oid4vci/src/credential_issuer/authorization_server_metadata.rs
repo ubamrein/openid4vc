@@ -36,5 +36,6 @@ pub struct AuthorizationServerMetadata {
     pub pre_authorized_grant_anonymous_access_supported: Option<bool>,
     // Additional authorization server metadata parameters MAY also be used.
     pub pushed_authorization_request_endpoint: Option<Url>,
+    #[serde(default)]
     pub require_pushed_authorization_requests: bool
 }
