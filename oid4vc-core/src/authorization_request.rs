@@ -164,6 +164,8 @@ impl<B: Body> std::fmt::Display for AuthorizationRequest<B> {
 
 #[cfg(test)]
 mod tests {
+    use url::Url;
+
     use super::*;
     use std::str::FromStr;
 
@@ -174,7 +176,7 @@ mod tests {
             body: Object {
                 rfc7519_claims: Default::default(),
                 client_id: "did:example:123".to_string(),
-                redirect_uri: "https://www.example.com".parse().unwrap(),
+                redirect_uri: "https://www.example.com".parse::<Url>().ok(),
                 state: Some("state".to_string()),
                 extension: json!({
                     "response_mode": "direct_post",
