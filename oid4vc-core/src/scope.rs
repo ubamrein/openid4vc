@@ -40,6 +40,12 @@ impl<'de> Deserialize<'de> for Scope {
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
+
+        // Support empty scope (scope: "")
+        if s.trim().is_empty() {
+            return Ok(Scope(Vec::new()));
+        }
+
         let values = s
             .split(' ')
             .map(ScopeValue::from_str)
@@ -113,6 +119,16 @@ mod tests {
                 ScopeValue::Phone
             ]),
             serde_json::from_str(r#""openid profile email address phone""#).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_scope_deserialization_empty() {
+        assert_eq!(
+            Scope(vec![
+                
+            ]),
+            serde_json::from_str(r#""""#).unwrap()
         );
     }
 
