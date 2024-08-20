@@ -234,7 +234,13 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
 
         let credential_request = CredentialRequest {
             credential_format: credential_format.clone(),
-            proof: Proofs(KeyProofsType::Jwt(proofs)),
+            proof: if proofs.len() == 1 {
+                Proof(Some(KeyProofType::Jwt {
+                    jwt: proofs.first().unwrap_or(&String::new()).to_string(),
+                }))
+            } else {
+                Proofs(KeyProofsType::Jwt(proofs))
+            },
             credential_response_encryption: credential_response_encryption.clone(),
         };
 
@@ -250,7 +256,12 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         serde_json::from_str(&text).map_err(|e| e.into())
     }
 
-    pub async fn get_proof_body(&self, credential_issuer_metadata: CredentialIssuerMetadata<CFC>, c_nonce: Option<String>,  client_id: &str) -> Result<Vec<String>> {
+    pub async fn get_proof_body(
+        &self,
+        credential_issuer_metadata: CredentialIssuerMetadata<CFC>,
+        c_nonce: Option<String>,
+        client_id: &str,
+    ) -> Result<Vec<String>> {
         let nonce = c_nonce.as_ref().ok_or(anyhow::anyhow!("No c_nonce found."))?; // XXX
         let timestamp = SystemTime::now();
         let timestamp = timestamp.duration_since(UNIX_EPOCH).expect("Time went backwards");
@@ -286,7 +297,54 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         content_decryptor: Option<Box<dyn ContentDecryptor>>,
         client_id: &str,
     ) -> Result<CredentialResponse> {
-        let nonce = c_nonce.as_ref().ok_or(anyhow::anyhow!("No c_nonce found."))?; // XXX
+        let timestamp = SystemTime::now();
+        let timestamp = timestamp.duration_since(UNIX_EPOCH).expect("Time went backwards");
+        let nonce = if let Some(nonce) = c_nonce.as_ref() {
+            nonce
+        } else {
+            let mut proofs = vec![];
+            for subject in &self.subjects {
+                let Ok(kpt) = KeyProofType::builder()
+                    .proof_type(ProofType::Jwt)
+                    .signer(subject.clone())
+                    .iss(client_id)
+                    .aud(credential_issuer_metadata.credential_issuer.clone())
+                    .iat(timestamp.as_secs() as i64)
+                    .exp((timestamp + Duration::from_secs(360)).as_secs() as i64)
+                    .subject_syntax_type(self.default_subject_syntax_type.to_string())
+                    .nonce("no_nonce")
+                    .build()
+                    .await
+                else {
+                    continue;
+                };
+                if let KeyProofType::Jwt { jwt } = kpt {
+                    proofs.push(jwt);
+                }
+            }
+            let credential_request = CredentialRequest {
+                credential_format: credential_format.clone(),
+                proof: Proofs(KeyProofsType::Jwt(proofs)),
+                credential_response_encryption: None,
+            };
+
+            println!("---> try getting nonce");
+            //do request to receive c_nonce
+            let response = self
+                .client
+                .post(credential_issuer_metadata.credential_endpoint.clone())
+                .bearer_auth(access_token.clone())
+                .json(&credential_request)
+                .send()
+                .await?;
+            let value: Value = response.json().await?;
+            let Some(value) = value.get("c_nonce").and_then(|a| a.as_str()) else {
+                bail!("No nonce");
+            };
+            println!("---> yay got nonce ({value})");
+            &value.to_string()
+        };
+        // let nonce = c_nonce.as_ref().ok_or(anyhow::anyhow!("No c_nonce found."))?; // XXX
         let timestamp = SystemTime::now();
         let timestamp = timestamp.duration_since(UNIX_EPOCH).expect("Time went backwards");
 
