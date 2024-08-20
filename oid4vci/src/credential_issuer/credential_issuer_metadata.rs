@@ -30,6 +30,8 @@ where
     // TODO: Temporary solution
     #[derivative(Default(value = "Url::parse(\"https://example.com\").unwrap()"))]
     pub credential_endpoint: Url,
+    //TODO: Not RFC but if only preauth certain issuer put it here
+    pub token_endpoint: Option<Url>,
     pub batch_credential_endpoint: Option<Url>,
     pub deferred_credential_endpoint: Option<Url>,
     pub notification_endpoint: Option<Url>,
