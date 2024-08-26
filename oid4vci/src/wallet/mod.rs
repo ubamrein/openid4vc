@@ -73,10 +73,9 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .form(&auth_request)
             .send()
             .await
-            .map_err(|e| {
-                println!("--> {e}");
-                e
-            })?
+            .map_err(|e| { println!("--> {e}"); e })?
+            .error_for_status()
+            .map_err(|e| { println!("--> {e}"); e })?
             .json()
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))
@@ -87,6 +86,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .get(credential_offer_uri)
             .send()
             .await?
+            .error_for_status()?
             .json::<CredentialOfferParameters>()
             .await
             .map_err(|_| anyhow::anyhow!("Failed to get credential offer"))
@@ -116,16 +116,32 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .get(oidc_authorization_server_endpoint.clone())
             .send()
             .await?;
-        if let Ok(result) = response.json::<AuthorizationServerMetadata>().await {
-            Ok(result)
-        } else {
-            self.client
-                .get(oauth_authorization_server_endpoint.clone())
-                .send()
-                .await?
-                .json::<AuthorizationServerMetadata>()
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to get authorization server metadata [oauth]: {e} ({oauth_authorization_server_endpoint})"))
+        // Try oidc first, then oauth as fallback. Report both errors if neither works.
+        let res_oidc = match response.error_for_status() { // Note: and_then does not work with async
+            Ok(response) => response.json::<AuthorizationServerMetadata>().await,
+            Err(e) => Err(e),
+        };
+        match res_oidc {
+            Ok(res) => Ok(res),
+            Err(err_oidc) => {
+                // try oauth next
+                let response = self.client
+                    .get(oauth_authorization_server_endpoint.clone())
+                    .send()
+                    .await?;
+                let res_oauth = match response.error_for_status() {
+                    Ok(response) => response.json::<AuthorizationServerMetadata>().await,
+                    Err(e) => Err(e),
+                };
+                match res_oauth {
+                    Ok(res) => Ok(res),
+                    Err(err_oauth) => {
+                        Err(anyhow::anyhow!("Failed to get authorization server metadata\n\
+                                             [oidc]: {err_oidc} ({oidc_authorization_server_endpoint})\n\
+                                             [oauth]: {err_oauth} ({oauth_authorization_server_endpoint})"))
+                    }
+                }
+            }
         }
     }
 
@@ -147,6 +163,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .get(openid_credential_issuer_endpoint)
             .send()
             .await?
+            .error_for_status()?
             .json::<CredentialIssuerMetadata<CFC>>()
             .await
             .unwrap())
@@ -176,6 +193,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             })
             .send()
             .await?
+            .error_for_status()?
             .json::<AuthorizationResponse>()
             .await
             .map_err(|_| anyhow::anyhow!("Failed to get authorization code"))
@@ -187,6 +205,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .form(&token_request)
             .send()
             .await?
+            .error_for_status()?
             .json()
             .await
             .map_err(|e| e.into())
@@ -213,6 +232,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .json(&transaction_id)
             .send()
             .await?
+            .error_for_status()?
             .json::<CredentialResponse>()
             .await
             .map_err(|e| e.into())
@@ -250,7 +270,8 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .bearer_auth(access_token.clone())
             .json(&credential_request)
             .send()
-            .await?;
+            .await?
+            .error_for_status()?;
         let text = response.text().await?;
         println!("{text}");
         serde_json::from_str(&text).map_err(|e| e.into())
@@ -336,7 +357,8 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                 .bearer_auth(access_token.clone())
                 .json(&credential_request)
                 .send()
-                .await?;
+                .await?
+                .error_for_status()?;
             let value: Value = response.json().await?;
             let Some(value) = value.get("c_nonce").and_then(|a| a.as_str()) else {
                 bail!("No nonce");
@@ -444,6 +466,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .json(&batch_credential_request)
             .send()
             .await?
+            .error_for_status()?
             .json()
             .await
             .map_err(|e| e.into())
