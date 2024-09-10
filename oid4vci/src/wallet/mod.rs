@@ -357,8 +357,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                 .bearer_auth(access_token.clone())
                 .json(&credential_request)
                 .send()
-                .await?
-                .error_for_status()?;
+                .await?;
             let value: Value = response.json().await?;
             let Some(value) = value.get("c_nonce").and_then(|a| a.as_str()) else {
                 bail!("No nonce");
