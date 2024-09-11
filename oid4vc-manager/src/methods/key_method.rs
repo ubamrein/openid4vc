@@ -2,14 +2,10 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use did_key::{
     generate, resolve, Config, CoreSign, DIDCore, Document, Ed25519KeyPair, KeyFormat, KeyMaterial, PatchedKeyPair,
-    VerificationMethod,
 };
-use jsonwebtoken::{
-    jwk::{self, CommonParameters, EllipticCurveKeyParameters, EllipticCurveKeyType, Jwk},
-    Algorithm,
-};
+use jsonwebtoken::Algorithm;
 use oid4vc_core::{authentication::sign::ExternalSign, Sign, Subject, Verify};
-use serde_json::Value;
+
 use std::sync::Arc;
 
 /// This [`KeySubject`] implements the [`Subject`] trait and can be used as a subject for a [`Provider`]. It uses the
