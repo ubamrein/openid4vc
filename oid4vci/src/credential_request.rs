@@ -1,9 +1,7 @@
 use crate::{
     credential_format_profiles::{CredentialFormatCollection, CredentialFormats, WithParameters},
-    credential_issuer::credential_issuer_metadata::CredentialResponseEncryption,
     proof::{KeyProofType, KeyProofsType},
 };
-use jsonwebtoken::jwk::Jwk;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
@@ -14,8 +12,6 @@ pub enum OneOrManyKeyProofs {
     #[serde(rename = "proofs")]
     Proofs(KeyProofsType),
 }
-
-use OneOrManyKeyProofs::{Proof, Proofs};
 
 /// Credential Request as described here: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-13.html#name-credential-request
 #[skip_serializing_none]

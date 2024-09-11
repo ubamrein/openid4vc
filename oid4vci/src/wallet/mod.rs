@@ -1,4 +1,3 @@
-use std::ops::Add;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::authorization_details::AuthorizationDetailsObject;
@@ -18,9 +17,6 @@ use crate::proof::{KeyProofType, KeyProofsType, ProofType};
 use crate::wallet::content_encryption::ContentDecryptor;
 use crate::{credential_response::CredentialResponse, token_request::TokenRequest, token_response::TokenResponse};
 use anyhow::{bail, Result};
-use base64::Engine;
-use jsonwebtoken::jwk::{CommonParameters, Jwk, RSAKeyParameters};
-use libaes::Cipher;
 use oid4vc_core::authentication::subject::SigningSubject;
 use oid4vc_core::SubjectSyntaxType;
 use reqwest::Url;

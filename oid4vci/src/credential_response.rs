@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_with::formats::PreferMany;
-use serde_with::{serde_as, skip_serializing_none, OneOrMany};
+use serde_with::{serde_as, skip_serializing_none};
 
 /// Credential Response as described here: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-13.html#name-credential-response
 #[serde_as]

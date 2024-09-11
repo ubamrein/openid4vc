@@ -1,7 +1,3 @@
-use jsonwebtoken::{
-    jwk::{CommonParameters, Jwk},
-    Algorithm, Header,
-};
 use oid4vc_core::{builder_fn, jwt, RFC7519Claims, Subject};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

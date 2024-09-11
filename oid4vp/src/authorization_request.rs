@@ -10,6 +10,7 @@ use oid4vc_core::{
     authorization_request::AuthorizationRequest, client_metadata::ClientMetadataResource, scope::Scope, RFC7519Claims,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 
 /// The Client ID Scheme enables the use of different mechanisms to obtain and validate the Verifier's metadata. As
@@ -46,7 +47,11 @@ pub struct ClientMetadataParameters {
     /// Object defining the formats and proof types of Verifiable Presentations and Verifiable Credentials that a
     /// Verifier supports.
     /// As described here: https://openid.net/specs/openid-4-verifiable-presentations-1_0-20.html#name-additional-verifier-metadat
-    vp_formats: HashMap<ClaimFormatDesignation, ClaimFormatProperty>,
+    pub vp_formats: HashMap<ClaimFormatDesignation, ClaimFormatProperty>,
+    pub jwks: Option<Value>,
+    pub authorization_encrypted_response_alg: Option<String>,
+    pub authorization_encrypted_response_enc: Option<String>,
+    pub require_signed_request_object: Option<bool>
 }
 
 #[derive(Debug, Default, IsEmpty)]
