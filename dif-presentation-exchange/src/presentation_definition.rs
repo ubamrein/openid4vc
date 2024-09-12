@@ -15,7 +15,7 @@ pub struct PresentationDefinition {
     #[getset(get = "pub")]
     pub(crate) input_descriptors: Vec<InputDescriptor>,
     #[getset(get = "pub")]
-    pub(crate) submission_requirements: Option<Vec<SubmissionRequirement>> ,
+    pub(crate) submission_requirements: Option<Vec<SubmissionRequirement>>,
     #[getset(get = "pub")]
     pub(crate) name: Option<String>,
     #[getset(get = "pub")]
@@ -36,16 +36,15 @@ pub struct SubmissionRequirement {
     #[getset(get = "pub")]
     count: u32,
     #[getset(get = "pub")]
-    from : String
+    from: String,
 }
 #[allow(dead_code)]
 #[skip_serializing_none]
 #[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
 pub enum SubmissionRule {
     #[serde(alias = "pick", alias = "PICK", alias = "Pick")]
-    Pick
+    Pick,
 }
-
 
 /// As specified in https://identity.foundation/presentation-exchange/#input-descriptor-object.
 /// All input descriptors MUST be satisfied, unless otherwise specified by a Feature.
@@ -118,8 +117,13 @@ pub enum ClaimFormatDesignation {
 pub enum ClaimFormatProperty {
     Alg(Vec<String>),
     ProofType(Vec<String>),
-    #[serde(other)]
-    None,
+    #[serde(untagged)]
+    Sdjwt {
+        #[serde(rename = "kb-jwt_alg_values")]
+        kb_jwt_alg_values: Vec<String>,
+        #[serde(rename = "sd-jwt_alg_values")]
+        sd_jwt_alg_values: Vec<String>,
+    },
 }
 
 #[allow(dead_code)]
