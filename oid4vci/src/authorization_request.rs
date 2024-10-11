@@ -29,5 +29,7 @@ pub struct PushedAuthorizationRequest {
     pub scope: Option<String>,
     pub state: Option<String>,
     pub code_challenge: Option<String>,
-    pub code_challenge_method: Option<String>
+    pub code_challenge_method: Option<String>,
+    // Additional authorization request parameters for OID4VCI https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-additional-request-paramete
+    pub issuer_state: Option<String>
 }
