@@ -38,5 +38,9 @@ pub struct AuthorizationServerMetadata {
     pub pushed_authorization_request_endpoint: Option<Url>,
     #[serde(default)]
     pub require_pushed_authorization_requests: bool,
-    pub dpop_signing_alg_values_supported: Option<Vec<String>>
+    pub dpop_signing_alg_values_supported: Option<Vec<String>>,
+    // Firstparty metadata
+    #[serde(default)]
+    pub first_party_usage: bool,
+    pub authorization_challenge_endpoint: Option<Url>,
 }
