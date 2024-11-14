@@ -69,9 +69,15 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .form(&auth_request)
             .send()
             .await
-            .map_err(|e| { println!("--> {e}"); e })?
+            .map_err(|e| {
+                println!("--> {e}");
+                e
+            })?
             .error_for_status()
-            .map_err(|e| { println!("--> {e}"); e })?
+            .map_err(|e| {
+                println!("--> {e}");
+                e
+            })?
             .json()
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))
@@ -113,7 +119,8 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .send()
             .await?;
         // Try oidc first, then oauth as fallback. Report both errors if neither works.
-        let res_oidc = match response.error_for_status() { // Note: and_then does not work with async
+        let res_oidc = match response.error_for_status() {
+            // Note: and_then does not work with async
             Ok(response) => response.json::<AuthorizationServerMetadata>().await,
             Err(e) => Err(e),
         };
@@ -121,7 +128,8 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             Ok(res) => Ok(res),
             Err(err_oidc) => {
                 // try oauth next
-                let response = self.client
+                let response = self
+                    .client
                     .get(oauth_authorization_server_endpoint.clone())
                     .send()
                     .await?;
@@ -131,11 +139,11 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                 };
                 match res_oauth {
                     Ok(res) => Ok(res),
-                    Err(err_oauth) => {
-                        Err(anyhow::anyhow!("Failed to get authorization server metadata\n\
+                    Err(err_oauth) => Err(anyhow::anyhow!(
+                        "Failed to get authorization server metadata\n\
                                              [oidc]: {err_oidc} ({oidc_authorization_server_endpoint})\n\
-                                             [oauth]: {err_oauth} ({oauth_authorization_server_endpoint})"))
-                    }
+                                             [oauth]: {err_oauth} ({oauth_authorization_server_endpoint})"
+                    )),
                 }
             }
         }
@@ -317,7 +325,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         let timestamp = SystemTime::now();
         let timestamp = timestamp.duration_since(UNIX_EPOCH).expect("Time went backwards");
         let nonce = if let Some(nonce) = c_nonce.as_ref() {
-            nonce
+            nonce.to_owned()
         } else {
             let mut proofs = vec![];
             for subject in &self.subjects {
@@ -359,7 +367,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                 bail!("No nonce");
             };
             println!("---> yay got nonce ({value})");
-            &value.to_string()
+            value.to_string()
         };
         // let nonce = c_nonce.as_ref().ok_or(anyhow::anyhow!("No c_nonce found."))?; // XXX
         let timestamp = SystemTime::now();
