@@ -112,7 +112,8 @@ mod tests {
                         proof_types_supported: vec![(
                             ProofType::Jwt,
                             KeyProofMetadata {
-                                proof_signing_alg_values_supported: vec!["ES256".to_string()]
+                                proof_signing_alg_values_supported: vec!["ES256".to_string()],
+                                key_attestations_required: None,
                             }
                         )]
                         .into_iter()

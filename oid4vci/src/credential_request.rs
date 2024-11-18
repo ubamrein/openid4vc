@@ -69,6 +69,7 @@ mod tests {
     use serde::de::DeserializeOwned;
     use serde_json::json;
     use std::{fs::File, path::Path};
+    use OneOrManyKeyProofs::{Proof, Proofs};
 
     fn json_example<T>(path: &str) -> T
     where

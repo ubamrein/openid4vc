@@ -133,7 +133,6 @@ pub fn base64_decode_bytes<T: AsRef<[u8]>>(bytes: &T) -> anyhow::Result<Vec<u8>>
 #[cfg(test)]
 mod tests {
     use hmac::Mac;
-    use oid4vc_core::jwt::base64_url_encode;
     use rsa::{rand_core::OsRng, traits::PublicKeyParts};
 
     use crate::wallet::content_encryption::{base64_encode_bytes, HmacSha256};
@@ -146,7 +145,7 @@ mod tests {
 
         let e = base64_encode_bytes(&exponent);
         let n = pub_key.n().to_bytes_be();
-        let n = base64_encode_bytes(&n);
+        let _n = base64_encode_bytes(&n);
         println!("{:?}", exponent);
         println!("{}", pub_key.e().to_string());
         println!("{}", e);

@@ -29,6 +29,15 @@ pub enum KeyProofsType {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct KeyProofMetadata {
     pub proof_signing_alg_values_supported: Vec<String>,
+    pub key_attestations_required: Option<KeyAttestationMetadata>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct KeyAttestationMetadata {
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub key_storage: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub user_authentication: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
