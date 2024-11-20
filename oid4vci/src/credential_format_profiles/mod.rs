@@ -111,6 +111,7 @@ where
     #[serde(rename = "mso_mdoc")]
     MsoMdoc(C::Container<MsoMdoc>),
     #[default]
+    #[serde(other)]
     Unknown,
 }
 
