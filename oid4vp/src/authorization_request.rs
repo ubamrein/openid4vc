@@ -40,6 +40,7 @@ pub struct AuthorizationRequestParameters {
     pub nonce: String,
     #[serde(flatten)]
     pub client_metadata: Option<ClientMetadataResource<ClientMetadataParameters>>,
+    pub zkp: Option<ZkpInfo>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -51,7 +52,7 @@ pub struct ClientMetadataParameters {
     pub jwks: Option<Value>,
     pub authorization_encrypted_response_alg: Option<String>,
     pub authorization_encrypted_response_enc: Option<String>,
-    pub require_signed_request_object: Option<bool>
+    pub require_signed_request_object: Option<bool>,
 }
 
 #[derive(Debug, Default, IsEmpty)]
@@ -68,6 +69,20 @@ pub struct AuthorizationRequestBuilder {
     nonce: Option<String>,
     client_metadata: Option<ClientMetadataResource<ClientMetadataParameters>>,
     custom_url_scheme: Option<String>,
+    zkp: Option<ZkpInfo>,
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
+pub struct ZkpInfo {
+    pub definition: String,
+    #[serde(alias = "provingKey")]
+    pub proving_key: String,
+    #[serde(alias = "issuerPk")]
+    pub issuer_pk: String,
+    #[serde(alias = "issuerId")]
+    pub issuer_id: String,
+    #[serde(alias = "issuerKeyId")]
+    pub issuer_key_id: String,
 }
 
 impl AuthorizationRequestBuilder {
@@ -89,6 +104,7 @@ impl AuthorizationRequestBuilder {
     builder_fn!(presentation_definition, PresentationDefinition);
     builder_fn!(client_id_scheme, ClientIdScheme);
     builder_fn!(custom_url_scheme, String);
+    builder_fn!(zkp, ZkpInfo);
 
     pub fn build(mut self) -> Result<AuthorizationRequest<Object<OID4VP>>> {
         match (self.client_id.take(), self.is_empty()) {
@@ -109,6 +125,7 @@ impl AuthorizationRequestBuilder {
                         .take()
                         .ok_or_else(|| anyhow!("nonce parameter is required."))?,
                     client_metadata: self.client_metadata.take(),
+                    zkp: self.zkp.take(),
                 };
 
                 Ok(AuthorizationRequest::<Object<OID4VP>> {
@@ -116,9 +133,7 @@ impl AuthorizationRequestBuilder {
                     body: Object::<OID4VP> {
                         rfc7519_claims: self.rfc7519_claims,
                         client_id,
-                        redirect_uri: self
-                            .redirect_uri
-                            .take(),
+                        redirect_uri: self.redirect_uri.take(),
                         state: self.state.take(),
                         extension,
                     },
