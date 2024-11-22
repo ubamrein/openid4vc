@@ -509,16 +509,20 @@ where
 
 impl ErrorForStatusDetailed for reqwest::Response {
     async fn error_for_status_detailed(self) -> Result<Self> {
-        let status = self.status();
-        if status.is_client_error() {
-            match self.json::<ErrorDetails>().await {
-                Ok(details) => Err(ErrorDetails {
-                    status,
-                    error: details.error,
-                    error_description: details.error_description,
+        if let Err(err_status) = self.error_for_status_ref() {
+            let status = self.status();
+            if status.is_client_error() {
+                match self.json::<ErrorDetails>().await {
+                    Ok(details) => Err(ErrorDetails {
+                        status,
+                        error: details.error,
+                        error_description: details.error_description,
+                    }
+                    .into()),
+                    Err(_) => Err(err_status.into()),
                 }
-                .into()),
-                Err(err) => Err(err.into()),
+            } else {
+                Err(err_status.into())
             }
         } else {
             Ok(self)
