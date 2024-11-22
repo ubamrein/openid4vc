@@ -73,7 +73,8 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
                 println!("--> {e}");
                 e
             })?
-            .error_for_status()
+            .error_for_status_detailed()
+            .await
             .map_err(|e| {
                 println!("--> {e}");
                 e
@@ -88,7 +89,8 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .get(credential_offer_uri)
             .send()
             .await?
-            .error_for_status()?
+            .error_for_status_detailed()
+            .await?
             .json::<CredentialOfferParameters>()
             .await
             .map_err(|_| anyhow::anyhow!("Failed to get credential offer"))
@@ -197,7 +199,8 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             })
             .send()
             .await?
-            .error_for_status()?
+            .error_for_status_detailed()
+            .await?
             .json::<AuthorizationResponse>()
             .await
             .map_err(|_| anyhow::anyhow!("Failed to get authorization code"))
@@ -209,7 +212,8 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .form(&token_request)
             .send()
             .await?
-            .error_for_status()?
+            .error_for_status_detailed()
+            .await?
             .json()
             .await
             .map_err(|e| e.into())
@@ -236,7 +240,8 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .json(&transaction_id)
             .send()
             .await?
-            .error_for_status()?
+            .error_for_status_detailed()
+            .await?
             .json::<CredentialResponse>()
             .await
             .map_err(|e| e.into())
@@ -269,7 +274,8 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .json(&credential_request)
             .send()
             .await?
-            .error_for_status()?;
+            .error_for_status_detailed()
+            .await?;
         let text = response.text().await?;
         println!("{text}");
         serde_json::from_str(&text).map_err(|e| e.into())
@@ -463,9 +469,59 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             .json(&batch_credential_request)
             .send()
             .await?
-            .error_for_status()?
+            .error_for_status_detailed()
+            .await?
             .json()
             .await
             .map_err(|e| e.into())
+    }
+}
+
+use serde::{Deserialize, Serialize};
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ErrorDetails {
+    #[serde(skip_serializing, skip_deserializing)]
+    pub status: reqwest::StatusCode,
+    pub error: String,
+    pub error_description: String,
+}
+
+impl std::fmt::Display for ErrorDetails {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "status: {}, error: \"{}\", error description: \"{}\"",
+            self.status, self.error, self.error_description
+        )
+    }
+}
+
+impl std::error::Error for ErrorDetails {}
+
+// Like reqwest.Response.error_for_status, but includes the details of the error returned by the
+// server, if they can be parsed.
+trait ErrorForStatusDetailed
+where
+    Self: std::marker::Sized,
+{
+    async fn error_for_status_detailed(self) -> Result<Self>;
+}
+
+impl ErrorForStatusDetailed for reqwest::Response {
+    async fn error_for_status_detailed(self) -> Result<Self> {
+        let status = self.status();
+        if status.is_client_error() {
+            match self.json::<ErrorDetails>().await {
+                Ok(details) => Err(ErrorDetails {
+                    status,
+                    error: details.error,
+                    error_description: details.error_description,
+                }
+                .into()),
+                Err(err) => Err(err.into()),
+            }
+        } else {
+            Ok(self)
+        }
     }
 }
