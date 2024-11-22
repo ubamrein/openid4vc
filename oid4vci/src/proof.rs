@@ -10,6 +10,8 @@ pub enum KeyProofType {
     Jwt { jwt: String },
     #[serde(rename = "cwt")]
     Cwt { cwt: String },
+    #[serde(rename = "attestation")]
+    Attestation { attestation: String },
 }
 
 impl KeyProofType {
@@ -23,7 +25,7 @@ impl KeyProofType {
 #[serde(rename_all = "lowercase")]
 pub enum KeyProofsType {
     Jwt(Vec<String>),
-    Cwt(Vec<String>),
+    Cwt(Vec<String>)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]

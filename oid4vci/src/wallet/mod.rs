@@ -248,7 +248,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         access_token: String,
         credential_format: CFC,
         content_decryptor: Option<Box<dyn ContentDecryptor>>,
-        proofs: Vec<String>,
+        proofs: OneOrManyKeyProofs,
     ) -> Result<CredentialResponse> {
         let credential_response_encryption = if let Some(content_decryptor) = content_decryptor.as_ref() {
             Some(content_decryptor.encryption_specification())
@@ -258,13 +258,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
 
         let credential_request = CredentialRequest {
             credential_format: credential_format.clone(),
-            proof: if proofs.len() == 1 {
-                Proof(Some(KeyProofType::Jwt {
-                    jwt: proofs.first().unwrap_or(&String::new()).to_string(),
-                }))
-            } else {
-                Proofs(KeyProofsType::Jwt(proofs))
-            },
+            proof: proofs,
             credential_response_encryption: credential_response_encryption.clone(),
         };
 
@@ -398,7 +392,7 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             access_token,
             credential_format,
             content_decryptor,
-            proofs,
+            Proofs(KeyProofsType::Jwt(proofs)),
         )
         .await
     }

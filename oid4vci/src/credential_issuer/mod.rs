@@ -23,6 +23,7 @@ impl<CFC: CredentialFormatCollection> CredentialIssuer<CFC> {
         match proof {
             KeyProofType::Jwt { jwt, .. } => validator.decode(jwt).await,
             KeyProofType::Cwt { .. } => unimplemented!("CWT is not supported yet"),
+            KeyProofType::Attestation { .. } => unimplemented!("Attestation is not supported yet"),
         }
     }
 }
