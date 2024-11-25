@@ -261,6 +261,17 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             None
         };
 
+        // convert to single "proof" instead of "proofs" if possible
+        let proofs = if let Proofs(KeyProofsType::Jwt(jwts)) = &proofs {
+            if jwts.len() == 1 {
+                Proof(jwts.first().map(|jwt| KeyProofType::Jwt { jwt: jwt.clone() }))
+            } else {
+                proofs
+            }
+        } else {
+            proofs
+        };
+
         let credential_request = CredentialRequest {
             credential_format: credential_format.clone(),
             proof: proofs,
@@ -483,6 +494,7 @@ pub struct ErrorDetails {
     #[serde(skip_serializing, skip_deserializing)]
     pub status: reqwest::StatusCode,
     pub error: String,
+    #[serde(alias="description")]
     pub error_description: String,
 }
 
