@@ -6,12 +6,12 @@ use super::CredentialSubject;
 
 credential_format!("jwt_vc_json", JwtVcJson, {
     credential_definition: CredentialDefinition,
-    order: Option<String>
+    order: Option<StringOrVec>
 });
 credential_format!("vc+sd-jwt", JwtVcSdJwt, {
     credential_definition: Option<CredentialDefinition>,
     vct: String,
-    order: Option<String>
+    order: Option<StringOrVec>
 });
 
 #[derive(Serialize, Deserialize, Debug, PartialEq,Eq,Clone)]
