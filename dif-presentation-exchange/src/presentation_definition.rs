@@ -107,7 +107,7 @@ pub enum ClaimFormatDesignation {
     AcVc,
     AcVp,
     MsoMdoc,
-    #[serde(rename = "vc+sd-jwt")]
+    #[serde(rename = "vc+sd-jwt", alias = "dc+sd-jwt")]
     VcSdJwt,
 }
 

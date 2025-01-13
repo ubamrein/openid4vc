@@ -102,7 +102,7 @@ where
 {
     #[serde(rename = "jwt_vc_json")]
     JwtVcJson(C::Container<JwtVcJson>),
-    #[serde(rename = "vc+sd-jwt")]
+    #[serde(rename = "vc+sd-jwt", alias = "dc+sd-jwt")]
     JwtVcSdJwt(C::Container<JwtVcSdJwt>),
     #[serde(rename = "jwt_vc_json-ld")]
     JwtVcJsonLd(C::Container<JwtVcJsonLd>),
