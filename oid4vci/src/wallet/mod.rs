@@ -8,11 +8,8 @@ use crate::credential_issuer::{
     authorization_server_metadata::AuthorizationServerMetadata, credential_issuer_metadata::CredentialIssuerMetadata,
 };
 use crate::credential_offer::{AuthorizationRequestReference, CredentialOfferParameters};
-use crate::credential_request::{
-    BatchCredentialRequest, CredentialRequest, CredentialResponseEncryptionKey,
-    CredentialResponseEncryptionSpecification, OneOrManyKeyProofs,
-};
-use crate::credential_response::{BatchCredentialResponse, CredentialResponseType};
+use crate::credential_request::{CredentialRequest, OneOrManyKeyProofs};
+use crate::credential_response::CredentialResponseType;
 use crate::proof::{KeyProofType, KeyProofsType, ProofType};
 use crate::wallet::content_encryption::ContentDecryptor;
 use crate::{credential_response::CredentialResponse, token_request::TokenRequest, token_response::TokenResponse};
@@ -23,7 +20,6 @@ use reqwest::Url;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::policies::ExponentialBackoff;
 use reqwest_retry::RetryTransientMiddleware;
-use rsa::rand_core::OsRng;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 use OneOrManyKeyProofs::{Proof, Proofs};
@@ -251,6 +247,8 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         &self,
         credential_issuer_metadata: CredentialIssuerMetadata<CFC>,
         access_token: String,
+        credential_configuration_id: String,
+        // For backwards compatibility with pre-draft15 only. Remove.
         credential_format: CFC,
         content_decryptor: Option<Box<dyn ContentDecryptor>>,
         proofs: OneOrManyKeyProofs,
@@ -272,10 +270,24 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
             proofs
         };
 
-        let credential_request = CredentialRequest {
-            credential_format: credential_format.clone(),
-            proof: proofs,
-            credential_response_encryption: credential_response_encryption.clone(),
+        // Backwards compatibility hack to only send appropriate fields in request:
+        // No surefire way to find out which version, but draft 15 compatible issuer will very
+        // likely have a nonce endpoint.
+        let is_openid4vci_draft15_issuer = credential_issuer_metadata.nonce_endpoint.is_some();
+        let credential_request = if is_openid4vci_draft15_issuer {
+            CredentialRequest {
+                credential_configuration_id: Some(credential_configuration_id),
+                credential_format: None,
+                proof: proofs,
+                credential_response_encryption: credential_response_encryption.clone(),
+            }
+        } else {
+            CredentialRequest {
+                credential_configuration_id: None,
+                credential_format: Some(credential_format),
+                proof: proofs,
+                credential_response_encryption: credential_response_encryption.clone(),
+            }
         };
 
         let response = self
@@ -329,75 +341,29 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         credential_issuer_metadata: CredentialIssuerMetadata<CFC>,
         access_token: String,
         c_nonce: Option<String>,
+        // For backwards compatibility with pre-draft15 only. Remove.
+        credential_configuration_id: String,
         credential_format: CFC,
         content_decryptor: Option<Box<dyn ContentDecryptor>>,
         client_id: &str,
     ) -> Result<CredentialResponse> {
         let timestamp = SystemTime::now();
         let timestamp = timestamp.duration_since(UNIX_EPOCH).expect("Time went backwards");
-        let nonce = if let Some(nonce) = c_nonce.as_ref() {
-            nonce.to_owned()
-        } else {
-            let mut proofs = vec![];
-            for subject in &self.subjects {
-                let Ok(kpt) = KeyProofType::builder()
-                    .proof_type(ProofType::Jwt)
-                    .signer(subject.clone())
-                    .iss(client_id)
-                    .aud(credential_issuer_metadata.credential_issuer.clone())
-                    .iat(timestamp.as_secs() as i64)
-                    .exp((timestamp + Duration::from_secs(360)).as_secs() as i64)
-                    .subject_syntax_type(self.default_subject_syntax_type.to_string())
-                    .nonce("no_nonce")
-                    .build()
-                    .await
-                else {
-                    continue;
-                };
-                if let KeyProofType::Jwt { jwt } = kpt {
-                    proofs.push(jwt);
-                }
-            }
-            let credential_request = CredentialRequest {
-                credential_format: credential_format.clone(),
-                proof: Proofs(KeyProofsType::Jwt(proofs)),
-                credential_response_encryption: None,
-            };
-
-            println!("---> try getting nonce");
-            //do request to receive c_nonce
-            let response = self
-                .client
-                .post(credential_issuer_metadata.credential_endpoint.clone())
-                .bearer_auth(access_token.clone())
-                .json(&credential_request)
-                .send()
-                .await?;
-            let value: Value = response.json().await?;
-            let Some(value) = value.get("c_nonce").and_then(|a| a.as_str()) else {
-                bail!("No nonce");
-            };
-            println!("---> yay got nonce ({value})");
-            value.to_string()
-        };
-        // let nonce = c_nonce.as_ref().ok_or(anyhow::anyhow!("No c_nonce found."))?; // XXX
-        let timestamp = SystemTime::now();
-        let timestamp = timestamp.duration_since(UNIX_EPOCH).expect("Time went backwards");
 
         let mut proofs = vec![];
         for subject in &self.subjects {
-            let Ok(kpt) = KeyProofType::builder()
+            let mut kpb = KeyProofType::builder()
                 .proof_type(ProofType::Jwt)
                 .signer(subject.clone())
                 .iss(client_id)
                 .aud(credential_issuer_metadata.credential_issuer.clone())
                 .iat(timestamp.as_secs() as i64)
                 .exp((timestamp + Duration::from_secs(360)).as_secs() as i64)
-                .nonce(nonce.clone())
-                .subject_syntax_type(self.default_subject_syntax_type.to_string())
-                .build()
-                .await
-            else {
+                .subject_syntax_type(self.default_subject_syntax_type.to_string());
+            if let Some(nonce) = &c_nonce {
+                kpb = kpb.nonce(nonce);
+            }
+            let Ok(kpt) = kpb.build().await else {
                 continue;
             };
             if let KeyProofType::Jwt { jwt } = kpt {
@@ -407,84 +373,12 @@ impl<CFC: CredentialFormatCollection + DeserializeOwned> Wallet<CFC> {
         self.get_credential_with_proofs(
             credential_issuer_metadata,
             access_token,
+            credential_configuration_id,
             credential_format,
             content_decryptor,
             Proofs(KeyProofsType::Jwt(proofs)),
         )
         .await
-    }
-
-    pub async fn get_batch_credential(
-        &self,
-        credential_issuer_metadata: CredentialIssuerMetadata<CFC>,
-        token_response: &TokenResponse,
-        credential_formats: Vec<CFC>,
-    ) -> Result<BatchCredentialResponse> {
-        let privatekey = rsa::RsaPrivateKey::new(&mut OsRng, 2028).unwrap();
-        let pub_key = serde_json::to_value(privatekey.to_public_key()).unwrap();
-
-        let jwk = CredentialResponseEncryptionKey::Rsa {
-            alg: "RSA-OAEP-256".to_string(),
-            n: pub_key.get("n").unwrap().as_str().unwrap().to_string(),
-            e: pub_key.get("e").unwrap().as_str().unwrap().to_string(),
-            kid: "rsa-key".to_string(),
-            r#use: "enc".to_string(),
-            kty: "RSA".to_string(),
-        };
-        let encryption_spec = CredentialResponseEncryptionSpecification {
-            jwk,
-            enc: "A128CBC-HS256".to_string(),
-            alg: "RSA-OAEP-256".to_string(),
-        };
-        let proof = Proof(Some(
-            KeyProofType::builder()
-                .proof_type(ProofType::Jwt)
-                .signer(self.subjects.first().unwrap().clone()) // XXX only handles one subject!
-                .iss(
-                    self.subjects
-                        .first()
-                        .unwrap()
-                        .identifier(&self.default_subject_syntax_type.to_string())
-                        .await?,
-                )
-                .aud(credential_issuer_metadata.credential_issuer)
-                .iat(1571324800)
-                .exp(9999999999i64)
-                // TODO: so is this REQUIRED or OPTIONAL?
-                .nonce(
-                    token_response
-                        .c_nonce
-                        .as_ref()
-                        .ok_or(anyhow::anyhow!("No c_nonce found."))?
-                        .clone(),
-                )
-                .subject_syntax_type(self.default_subject_syntax_type.to_string())
-                .build()
-                .await?,
-        ));
-
-        let batch_credential_request = BatchCredentialRequest {
-            credential_requests: credential_formats
-                .iter()
-                .map(|credential_format| CredentialRequest {
-                    credential_format: credential_format.to_owned(),
-                    proof: proof.clone(),
-                    credential_response_encryption: Some(encryption_spec.clone()),
-                })
-                .collect(),
-        };
-
-        self.client
-            .post(credential_issuer_metadata.batch_credential_endpoint.unwrap())
-            .bearer_auth(token_response.access_token.clone())
-            .json(&batch_credential_request)
-            .send()
-            .await?
-            .error_for_status_detailed()
-            .await?
-            .json()
-            .await
-            .map_err(|e| e.into())
     }
 }
 
@@ -494,7 +388,7 @@ pub struct ErrorDetails {
     #[serde(skip_serializing, skip_deserializing)]
     pub status: reqwest::StatusCode,
     pub error: String,
-    #[serde(alias="description")]
+    #[serde(alias = "description")]
     pub error_description: String,
 }
 

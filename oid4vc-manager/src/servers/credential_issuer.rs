@@ -201,7 +201,7 @@ async fn credential<S: Storage<CFC>, CFC: CredentialFormatCollection>(
                     .metadata
                     .credential_issuer
                     .clone(),
-                credential_request.credential_format.clone(),
+                credential_request.credential_format.clone().expect("broken and unused"),
                 credential_issuer_manager.credential_issuer.subject.clone(),
             )
             .unwrap();
@@ -261,7 +261,7 @@ async fn batch_credential<S: Storage<CFC>, CFC: CredentialFormatCollection>(
                         .metadata
                         .credential_issuer
                         .clone(),
-                    credential_request.credential_format.clone(),
+                    credential_request.credential_format.clone().expect("broken and unused"),
                     credential_issuer_manager.credential_issuer.subject.clone(),
                 )
                 .unwrap()

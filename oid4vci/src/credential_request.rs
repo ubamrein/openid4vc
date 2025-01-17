@@ -20,8 +20,11 @@ pub struct CredentialRequest<CFC = CredentialFormats<WithParameters>>
 where
     CFC: CredentialFormatCollection,
 {
+    pub credential_configuration_id: Option<String>,
+    // Format and the format-specific parameters are only kept for backwards compatibility with
+    // pre-draft15 issuers. Remove.
     #[serde(flatten)]
-    pub credential_format: CFC,
+    pub credential_format: Option<CFC>,
     #[serde(flatten)]
     pub proof: OneOrManyKeyProofs,
     // TODO: add `credential_identifier` field when support for Authorization Code Flow is added.
