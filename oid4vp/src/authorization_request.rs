@@ -32,7 +32,7 @@ pub enum ClientIdScheme {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct AuthorizationRequestParameters {
     pub response_type: MustBe!("vp_token"),
-    pub presentation_definition: PresentationDefinition,
+    pub presentation_definition: Option<PresentationDefinition>,
     pub client_id_scheme: Option<ClientIdScheme>,
     pub response_mode: Option<String>,
     pub response_uri: Option<String>,
@@ -112,10 +112,7 @@ impl AuthorizationRequestBuilder {
             (Some(client_id), false) => {
                 let extension = AuthorizationRequestParameters {
                     response_type: MustBe!("vp_token"),
-                    presentation_definition: self
-                        .presentation_definition
-                        .take()
-                        .ok_or_else(|| anyhow!("presentation_definition parameter is required."))?,
+                    presentation_definition: self.presentation_definition.take(),
                     client_id_scheme: self.client_id_scheme.take(),
                     scope: self.scope.take(),
                     response_mode: self.response_mode.take(),
@@ -240,7 +237,11 @@ mod tests {
                             )
                         ]
                         .into_iter()
-                        .collect()
+                        .collect(),
+                        jwks: todo!(),
+                        authorization_encrypted_response_alg: todo!(),
+                        authorization_encrypted_response_enc: todo!(),
+                        require_signed_request_object: todo!()
                     }
                 }),
             },
